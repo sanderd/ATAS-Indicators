@@ -3,6 +3,9 @@ using System.ComponentModel.DataAnnotations;
 using ATAS.Indicators;
 using OFT.Attributes;
 using OFT.Localization;
+using sadnerd.io.ATAS.PvsraCandles.Engines;
+using sadnerd.io.ATAS.PvsraCandles.Enums;
+using sadnerd.io.ATAS.PvsraCandles.Mappers;
 
 namespace sadnerd.io.ATAS.PvsraCandles
 {
@@ -23,6 +26,9 @@ namespace sadnerd.io.ATAS.PvsraCandles
         //    IsHidden = true
         //}; 
         private readonly PaintbarsDataSeries _renderSeries = new("ColorBars", Strings.Candles) { IsHidden = true };
+        
+        private readonly IIndicatorCandleToCandleDetailsMapper _candleMapper;
+        private readonly ICandleTypeDeterminator _candleTypeDeterminator;
 
         [Display(Name = "PVSRA Green Vector", GroupName = "Colors")]
         public CrossColor PvsraGreenColor
@@ -94,6 +100,10 @@ namespace sadnerd.io.ATAS.PvsraCandles
         {
             DenyToChangePanel = true;
             DataSeries[0] = _renderSeries;
+
+            _candleMapper = new IndicatorCandleToCandleDetailsMapper();
+            _candleTypeDeterminator = new CandleTypeDeterminator();
+
         }
 
         protected override void OnRecalculate()
@@ -103,27 +113,35 @@ namespace sadnerd.io.ATAS.PvsraCandles
 
         protected override void OnCalculate(int bar, decimal value)
         {
+            // We need at least 10 previous bars to calculate the PVSRA candles
             if (bar < 10)
                 return;
 
-            var currentCandle = GetCandle(bar);
-            var prevCandles = Enumerable.Range(1, 10).Select(i => GetCandle(bar - i)).ToArray();
+            var currentCandle = _candleMapper.Map(GetCandle(bar));
+            var prevCandles = Enumerable.Range(1, 10).Select(i => _candleMapper.Map(GetCandle(bar - i))).ToArray();
 
-            var averagePreviousVolume = prevCandles.Average(c => c.Volume);
-            var highestPreviousVolumeSpread = prevCandles.Max(c => c.Volume * (c.High - c.Low));
-            var currentVolumeSpread = currentCandle.Volume * (currentCandle.High - currentCandle.Low);
+            var candleType = _candleTypeDeterminator.GetCandleType(currentCandle, prevCandles);
 
-            if(currentCandle.Volume >= 2 * averagePreviousVolume || currentVolumeSpread >= highestPreviousVolumeSpread)
+            switch (candleType)
             {
-                _renderSeries[bar] = currentCandle.Close > currentCandle.Open ? PvsraGreenColor : PvsraRedColor;
-            }
-            else if (currentCandle.Volume >= (decimal)1.5 * averagePreviousVolume)
-            {
-                _renderSeries[bar] = currentCandle.Close > currentCandle.Open ? PvsraBlueColor : PvsraVioletColor;
-            }
-            else
-            {
-                _renderSeries[bar] = currentCandle.Close > currentCandle.Open ? PvsraNeutralPositiveColor : PvsraNeutralNegativeColor;
+                case CandleType.GreenVector:
+                    _renderSeries[bar] = PvsraGreenColor;
+                    break;
+                case CandleType.RedVector:
+                    _renderSeries[bar] = PvsraRedColor;
+                    break;
+                case CandleType.BlueVector:
+                    _renderSeries[bar] = PvsraBlueColor;
+                    break;
+                case CandleType.VioletVector:
+                    _renderSeries[bar] = PvsraVioletColor;
+                    break;
+                case CandleType.NeutralPositive:
+                    _renderSeries[bar] = PvsraNeutralPositiveColor;
+                    break;
+                case CandleType.NeutralNegative:
+                    _renderSeries[bar] = PvsraNeutralNegativeColor;
+                    break;
             }
         }
     }
