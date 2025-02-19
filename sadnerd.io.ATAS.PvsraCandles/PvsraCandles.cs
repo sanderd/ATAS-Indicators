@@ -30,7 +30,7 @@ namespace sadnerd.io.ATAS.PvsraCandles
         private readonly IIndicatorCandleToCandleDetailsMapper _candleMapper;
         private readonly ICandleTypeDeterminator _candleTypeDeterminator;
 
-        [Display(Name = "PVSRA Green Vector", GroupName = "Colors")]
+        [Display(Name = "PVSRA Green Vector", GroupName = "Vectors")]
         public CrossColor PvsraGreenColor
         {
             get => _pvsraGreenColor;
@@ -41,7 +41,7 @@ namespace sadnerd.io.ATAS.PvsraCandles
             }
         }
 
-        [Display(Name = "PVSRA Red Vector", GroupName = "Colors")]
+        [Display(Name = "PVSRA Red Vector", GroupName = "Vectors")]
         public CrossColor PvsraRedColor
         {
             get => _pvsraRedColor;
@@ -52,7 +52,7 @@ namespace sadnerd.io.ATAS.PvsraCandles
             }
         }
 
-        [Display(Name = "PVSRA Blue Vector", GroupName = "Colors")]
+        [Display(Name = "PVSRA Blue Vector", GroupName = "Vectors")]
         public CrossColor PvsraBlueColor
         {
             get => _pvsraBlueColor;
@@ -63,7 +63,7 @@ namespace sadnerd.io.ATAS.PvsraCandles
             }
         }
 
-        [Display(Name = "PVSRA Violet Vector", GroupName = "Colors")]
+        [Display(Name = "PVSRA Violet Vector", GroupName = "Vectors")]
         public CrossColor PvsraVioletColor
         {
             get => _pvsraVioletColor;
@@ -74,7 +74,7 @@ namespace sadnerd.io.ATAS.PvsraCandles
             }
         }
 
-        [Display(Name = "PVSRA Neutral Positive Vector", GroupName = "Colors")]
+        [Display(Name = "PVSRA Neutral Positive Vector", GroupName = "Vectors")]
         public CrossColor PvsraNeutralPositiveColor
         {
             get => _pvsraNeutralPositiveColor;
@@ -85,7 +85,7 @@ namespace sadnerd.io.ATAS.PvsraCandles
             }
         }
 
-        [Display(Name = "PVSRA Neutral Negative Vector", GroupName = "Colors")]
+        [Display(Name = "PVSRA Neutral Negative Vector", GroupName = "Vectors")]
         public CrossColor PvsraNeutralNegativeColor
         {
             get => _pvsraNeutralNegativeColor;
