@@ -18,8 +18,8 @@ namespace sadnerd.io.ATAS.PvsraCandles
         private CrossColor _pvsraRedColor = CrossColors.Red;
         private CrossColor _pvsraBlueColor = CrossColor.FromArgb(255, 0, 136, 255);
         private CrossColor _pvsraVioletColor = CrossColor.FromArgb(255, 217, 0, 217);
-        private CrossColor _pvsraNeutralPositiveColor = CrossColors.LightGray;
-        private CrossColor _pvsraNeutralNegativeColor = CrossColors.DarkGray;
+        private CrossColor _pvsraNeutralPositiveColor = CrossColor.FromArgb(255, 134, 134, 134);
+        private CrossColor _pvsraNeutralNegativeColor = CrossColor.FromArgb(255, 89, 89, 89);
 
         //private PaintbarsDataSeries _renderSeries = new("RenderSeries", "PaintBars")
         //{
