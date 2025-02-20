@@ -2,10 +2,10 @@
 
 public enum CandleType
 {
-    GreenVector,
-    RedVector,
-    BlueVector,
-    VioletVector,
+    Green,
+    Red,
+    Blue,
+    Violet,
     NeutralPositive,
     NeutralNegative
 }

@@ -24,21 +24,21 @@ namespace sadnerd.io.ATAS.PvsraCandles
         private CrossColor _pvsraVioletColor = CrossColor.FromArgb(255, 217, 0, 217);
         private CrossColor _pvsraNeutralPositiveColor = CrossColor.FromArgb(255, 134, 134, 134);
         private CrossColor _pvsraNeutralNegativeColor = CrossColor.FromArgb(255, 89, 89, 89);
-        private CrossColor _vectorShadowColor = CrossColor.FromArgb(20, 255, 255, 255);
+        private CrossColor _shadowColor = CrossColor.FromArgb(20, 255, 255, 255);
 
         //private PaintbarsDataSeries _renderSeries = new("RenderSeries", "PaintBars")
         //{
         //    IsHidden = true
         //}; 
         private readonly PaintbarsDataSeries _renderSeries = new("ColorBars", Strings.Candles) { IsHidden = true };
-        private bool _showVectorShadows;
+        private bool _showShadows;
         
         private readonly IIndicatorCandleToCandleDetailsMapper _candleMapper;
         private readonly ICandleTypeDeterminator _candleTypeDeterminator;
-        private IDictionary<int, VectorShadow> _vectorShadows = new Dictionary<int, VectorShadow>();
-        private PenSettings _vectorShadowPen = new() { Color = CrossColors.Transparent };
+        private IDictionary<int, Shadow> _shadows = new Dictionary<int, Shadow>();
+        private PenSettings _shadowBorderPen = new() { Color = CrossColors.Transparent };
 
-        [Display(Name = "PVSRA Green Vector", GroupName = "Vectors")]
+        [Display(Name = "PVSRA Green Candle", GroupName = "Candles")]
         public CrossColor PvsraGreenColor
         {
             get => _pvsraGreenColor;
@@ -49,7 +49,7 @@ namespace sadnerd.io.ATAS.PvsraCandles
             }
         }
 
-        [Display(Name = "PVSRA Red Vector", GroupName = "Vectors")]
+        [Display(Name = "PVSRA Red Candle", GroupName = "Candles")]
         public CrossColor PvsraRedColor
         {
             get => _pvsraRedColor;
@@ -60,7 +60,7 @@ namespace sadnerd.io.ATAS.PvsraCandles
             }
         }
 
-        [Display(Name = "PVSRA Blue Vector", GroupName = "Vectors")]
+        [Display(Name = "PVSRA Blue Candle", GroupName = "Candles")]
         public CrossColor PvsraBlueColor
         {
             get => _pvsraBlueColor;
@@ -71,7 +71,7 @@ namespace sadnerd.io.ATAS.PvsraCandles
             }
         }
 
-        [Display(Name = "PVSRA Violet Vector", GroupName = "Vectors")]
+        [Display(Name = "PVSRA Violet Candle", GroupName = "Candles")]
         public CrossColor PvsraVioletColor
         {
             get => _pvsraVioletColor;
@@ -82,7 +82,7 @@ namespace sadnerd.io.ATAS.PvsraCandles
             }
         }
 
-        [Display(Name = "PVSRA Neutral Positive Vector", GroupName = "Vectors")]
+        [Display(Name = "PVSRA Neutral Positive Candle", GroupName = "Candles")]
         public CrossColor PvsraNeutralPositiveColor
         {
             get => _pvsraNeutralPositiveColor;
@@ -93,7 +93,7 @@ namespace sadnerd.io.ATAS.PvsraCandles
             }
         }
 
-        [Display(Name = "PVSRA Neutral Negative Vector", GroupName = "Vectors")]
+        [Display(Name = "PVSRA Neutral Negative Candle", GroupName = "Candles")]
         public CrossColor PvsraNeutralNegativeColor
         {
             get => _pvsraNeutralNegativeColor;
@@ -104,24 +104,24 @@ namespace sadnerd.io.ATAS.PvsraCandles
             }
         }
 
-        [Display(Name = "Show vector shadows", GroupName = "Shadows")]
-        public bool ShowVectorShadows
+        [Display(Name = "Show shadows", GroupName = "Shadows")]
+        public bool ShowShadows
         {
-            get => this._showVectorShadows;
+            get => this._showShadows;
             set
             {
-                _showVectorShadows = value;
+                _showShadows = value;
                 RecalculateValues();
             }
         }
 
-        [Display(Name = "Vector shadow fill color", GroupName = "Shadows")]
-        public CrossColor VectorShadowColor
+        [Display(Name = "Shadow fill color", GroupName = "Shadows")]
+        public CrossColor ShadowColor
         {
-            get => _vectorShadowColor;
+            get => _shadowColor;
             set
             {
-                _vectorShadowColor = value;
+                _shadowColor = value;
                 RecalculateValues();
             }
         }
@@ -142,23 +142,23 @@ namespace sadnerd.io.ATAS.PvsraCandles
         protected override void OnRecalculate()
         {
             Clear();
-            _vectorShadows.Clear();
+            _shadows.Clear();
         }
 
         protected override void OnRender(RenderContext context, DrawingLayouts layout)
         {
             if (ChartInfo is null) return;
 
-            if (_showVectorShadows)
+            if (ShowShadows)
             {
-                DrawVectorCandles(context, ChartInfo, ChartInfo.TimeFrame);
+                DrawCandleShadows(context, ChartInfo, ChartInfo.TimeFrame);
             }
         }
 
         // Based on FairValueGap
-        private void DrawVectorCandles(RenderContext context, IChart chartInfo, string timeFrame)
+        private void DrawCandleShadows(RenderContext context, IChart chartInfo, string timeFrame)
         {
-            var shadows = _vectorShadows.Where(s => s.Key <= LastVisibleBarNumber && s.Value.EndBar == null).ToList();
+            var shadows = _shadows.Where(s => s.Key <= LastVisibleBarNumber && s.Value.EndBar == null).ToList();
 
             foreach (var shadow in shadows)
             {
@@ -168,7 +168,7 @@ namespace sadnerd.io.ATAS.PvsraCandles
                 var w = x2 - x;
                 var h = chartInfo.GetYByPrice(Math.Min(shadow.Value.UnrecoveredPriceHigh, shadow.Value.UnrecoveredPriceLow), false) - y;
                 var rec = new Rectangle(x, y, w, h);
-                context.DrawFillRectangle(_vectorShadowPen.RenderObject, VectorShadowColor.Convert(), rec);
+                context.DrawFillRectangle(_shadowBorderPen.RenderObject, ShadowColor.Convert(), rec);
             }
         }
 
@@ -185,16 +185,16 @@ namespace sadnerd.io.ATAS.PvsraCandles
 
             switch (candleType)
             {
-                case CandleType.GreenVector:
+                case CandleType.Green:
                     _renderSeries[bar] = PvsraGreenColor;
                     break;
-                case CandleType.RedVector:
+                case CandleType.Red:
                     _renderSeries[bar] = PvsraRedColor;
                     break;
-                case CandleType.BlueVector:
+                case CandleType.Blue:
                     _renderSeries[bar] = PvsraBlueColor;
                     break;
-                case CandleType.VioletVector:
+                case CandleType.Violet:
                     _renderSeries[bar] = PvsraVioletColor;
                     break;
                 case CandleType.NeutralPositive:
@@ -205,33 +205,33 @@ namespace sadnerd.io.ATAS.PvsraCandles
                     break;
             }
 
-            if (_showVectorShadows)
+            if (_showShadows)
             {
                 if (candleType != CandleType.NeutralPositive && candleType != CandleType.NeutralNegative)
                 {
-                    CreateVectorShadow(bar, currentCandle, candleType);
+                    CreateCandleShadow(bar, currentCandle, candleType);
                 }
 
-                MarkVectorsRecovered(bar, currentCandle);
+                MarkRecoveredShadows(bar, currentCandle);
             }
         }
 
-        private void CreateVectorShadow(int bar, CandleDetails currentCandle, CandleType candleType)
+        private void CreateCandleShadow(int bar, CandleDetails currentCandle, CandleType candleType)
         {
-            if (_vectorShadows.ContainsKey(bar))
+            if (_shadows.ContainsKey(bar))
             {
-                _vectorShadows.Remove(bar);
+                _shadows.Remove(bar);
             }
 
             var priceHigh = Math.Max(currentCandle.Open, currentCandle.Close);
             var priceLow = Math.Min(currentCandle.Open, currentCandle.Close);
             
-            _vectorShadows.Add(bar, new VectorShadow(bar, priceLow, priceHigh, null, priceLow, priceHigh));
+            _shadows.Add(bar, new Shadow(bar, priceLow, priceHigh, null, priceLow, priceHigh));
         }
 
-        private void MarkVectorsRecovered(int bar, CandleDetails currentCandle)
+        private void MarkRecoveredShadows(int bar, CandleDetails currentCandle)
         {
-            var shadows = _vectorShadows.Where(s => s.Key < bar && s.Value.EndBar == null).ToList();
+            var shadows = _shadows.Where(s => s.Key < bar && s.Value.EndBar == null).ToList();
 
             var priceHigh = currentCandle.High;
             var priceLow = currentCandle.Low;

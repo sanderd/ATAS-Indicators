@@ -1,6 +1,6 @@
 ﻿namespace sadnerd.io.ATAS.PvsraCandles.Models;
 
-public record VectorShadow(
+public record Shadow(
     int StartBar, 
     decimal InitialPriceLow, 
     decimal InitialPriceHigh, 
