@@ -14,8 +14,8 @@ using sadnerd.io.ATAS.PvsraCandles.Models;
 namespace sadnerd.io.ATAS.PvsraCandles
 {
     [DisplayName("PVSRA Candles")]
-    [Display(Name = "PVSRA Candles", Description = "example description")]
-    [HelpLink("https://example.org")]
+    [Display(Name = "PVSRA Candles", Description = "Candle colors are based on average volume of previous candles")]
+    [HelpLink("https://github.com/sanderd/ATAS-Indicators/wiki/PVSRA-Candles")]
     public class PvsraCandles : Indicator
     {
         private CrossColor _pvsraGreenColor = CrossColors.LightGreen;
