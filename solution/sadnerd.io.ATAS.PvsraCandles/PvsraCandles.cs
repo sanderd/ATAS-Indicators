@@ -26,10 +26,6 @@ namespace sadnerd.io.ATAS.PvsraCandles
         private CrossColor _pvsraNeutralNegativeColor = CrossColor.FromArgb(255, 89, 89, 89);
         private CrossColor _shadowColor = CrossColor.FromArgb(20, 255, 255, 255);
 
-        //private PaintbarsDataSeries _renderSeries = new("RenderSeries", "PaintBars")
-        //{
-        //    IsHidden = true
-        //}; 
         private readonly PaintbarsDataSeries _renderSeries = new("ColorBars", Strings.Candles) { IsHidden = true };
         private bool _showShadows;
         
@@ -126,7 +122,6 @@ namespace sadnerd.io.ATAS.PvsraCandles
             }
         }
 
-
         public PvsraCandles() : base(true)
         {
             DenyToChangePanel = true;
@@ -136,7 +131,6 @@ namespace sadnerd.io.ATAS.PvsraCandles
 
             _candleMapper = new IndicatorCandleToCandleDetailsMapper();
             _candleTypeDeterminator = new CandleTypeDeterminator();
-
         }
 
         protected override void OnRecalculate()
@@ -155,7 +149,6 @@ namespace sadnerd.io.ATAS.PvsraCandles
             }
         }
 
-        // Based on FairValueGap
         private void DrawCandleShadows(RenderContext context, IChart chartInfo, string timeFrame)
         {
             var shadows = _shadows.Where(s => s.Key <= LastVisibleBarNumber && s.Value.EndBar == null).ToList();
