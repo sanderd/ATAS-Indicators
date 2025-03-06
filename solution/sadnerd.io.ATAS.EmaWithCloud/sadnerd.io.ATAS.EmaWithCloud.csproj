@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\GlobalUsings.cs" Link="GlobalUsings.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Reference Include="ATAS.Indicators">
       <HintPath>C:\Program Files (x86)\ATAS Platform\ATAS.Indicators.dll</HintPath>
     </Reference>
