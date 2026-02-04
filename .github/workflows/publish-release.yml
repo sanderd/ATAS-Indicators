@@ -1,0 +1,198 @@
+name: Publish Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag name (e.g., v1.0.0)'
+        required: true
+        type: string
+      draft:
+        description: 'Create as draft release'
+        required: false
+        type: boolean
+        default: false
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  SOLUTION_PATH: './solution'
+
+jobs:
+  create-release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    
+    - name: Determine release tag
+      id: tag
+      run: |
+        if ("${{ github.event_name }}" -eq "push") {
+          $tag = "${{ github.ref_name }}"
+          echo "tag_name=$tag" >> $env:GITHUB_OUTPUT
+        } else {
+          $tag = "${{ github.event.inputs.tag_name }}"
+          echo "tag_name=$tag" >> $env:GITHUB_OUTPUT
+        }
+        echo "Release tag: $tag"
+    
+    - name: Cache NuGet packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+    
+    - name: Restore dependencies
+      run: dotnet restore
+      working-directory: ${{ env.SOLUTION_PATH }}
+    
+    - name: Build Release
+      run: dotnet build --configuration Release --no-restore
+      working-directory: ${{ env.SOLUTION_PATH }}
+    
+    - name: Create release package
+      id: package
+      run: |
+        $tagName = "${{ steps.tag.outputs.tag_name }}"
+        $releaseDir = "release-package"
+        $packageName = "atas-indicators-$tagName"
+        
+        # Create release directory
+        New-Item -ItemType Directory -Force -Path $releaseDir
+        
+        # Copy indicator DLLs
+        $indicators = @(
+            @{ Name = "EmaWithCloud"; Project = "sadnerd.io.ATAS.EmaWithCloud" },
+            @{ Name = "PvsraCandles"; Project = "sadnerd.io.ATAS.PvsraCandles" }
+        )
+        
+        foreach ($indicator in $indicators) {
+            $sourceDll = "solution/$($indicator.Project)/bin/Release/net8.0-windows/$($indicator.Project).dll"
+            if (Test-Path $sourceDll) {
+                Copy-Item $sourceDll -Destination $releaseDir
+                echo "Copied $($indicator.Name) indicator"
+            } else {
+                echo "Warning: $sourceDll not found"
+            }
+        }
+        
+        # Create README
+        @"
+        # ATAS Indicators $tagName
+
+        ## Installation
+
+        Copy the indicator DLLs to your ATAS Indicators folder:
+        ``%APPDATA%\ATAS\Indicators``
+
+        ## Included Indicators
+
+        - **EmaWithCloud**: EMA indicator with cloud visualization
+        - **PvsraCandles**: PVSRA-style candle coloring
+
+        ## Requirements
+
+        - ATAS Platform
+        - .NET 8.0 Runtime (included with ATAS)
+
+        ---
+        Version: $tagName
+        Build: ${{ github.sha }}
+        "@ | Out-File -FilePath "$releaseDir/README.md" -Encoding UTF8
+        
+        # Create install script
+        @"
+        @echo off
+        echo Installing ATAS Indicators $tagName...
+        set "ATAS_INDICATORS_DIR=%APPDATA%\ATAS\Indicators"
+        
+        if not exist "%ATAS_INDICATORS_DIR%" (
+            echo Creating ATAS Indicators directory...
+            mkdir "%ATAS_INDICATORS_DIR%"
+        )
+        
+        copy /Y "*.dll" "%ATAS_INDICATORS_DIR%\"
+        
+        echo.
+        echo Installation complete!
+        echo Restart ATAS to load the new indicators.
+        pause
+        "@ | Out-File -FilePath "$releaseDir/install.bat" -Encoding ASCII
+        
+        # Create zip
+        $zipPath = "$packageName.zip"
+        Compress-Archive -Path "$releaseDir/*" -DestinationPath $zipPath -Force
+        
+        echo "package_name=$packageName" >> $env:GITHUB_OUTPUT
+        echo "package_path=$zipPath" >> $env:GITHUB_OUTPUT
+        
+        $size = [math]::Round((Get-Item $zipPath).Length / 1KB, 2)
+        echo "Created release package: $zipPath ($size KB)"
+    
+    - name: Generate release notes
+      id: release_notes
+      run: |
+        $tagName = "${{ steps.tag.outputs.tag_name }}"
+        
+        $releaseNotes = @"
+        # ATAS Indicators $tagName
+
+        ## Included Indicators
+
+        - **EmaWithCloud**: EMA indicator with cloud visualization between fast and slow EMAs
+        - **PvsraCandles**: PVSRA-style candle coloring based on volume analysis
+
+        ## Installation
+
+        1. Download ``atas-indicators-$tagName.zip``
+        2. Extract and run ``install.bat``, or
+        3. Manually copy DLLs to ``%APPDATA%\ATAS\Indicators``
+        4. Restart ATAS Platform
+
+        ---
+        **Build Information**
+        - Version: $tagName
+        - Commit: ${{ github.sha }}
+        "@
+        
+        $releaseNotes | Out-File -FilePath "release-notes.md" -Encoding UTF8
+    
+    - name: Create GitHub Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.tag.outputs.tag_name }}
+        release_name: ATAS Indicators ${{ steps.tag.outputs.tag_name }}
+        body_path: release-notes.md
+        draft: ${{ github.event.inputs.draft || false }}
+        prerelease: ${{ github.event.inputs.prerelease || false }}
+    
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ${{ steps.package.outputs.package_path }}
+        asset_name: ${{ steps.package.outputs.package_name }}.zip
+        asset_content_type: application/zip
