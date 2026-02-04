@@ -3,5 +3,7 @@
   <PropertyGroup>
     <AtasAvailable>false</AtasAvailable>
     <AtasAvailable Condition="Exists('C:\Program Files (x86)\ATAS Platform\ATAS.Indicators.dll')">true</AtasAvailable>
+    <!-- Suppress analyzer warnings when using reference assemblies -->
+    <NoWarn Condition="'$(AtasAvailable)' == 'false'">$(NoWarn);AD0001</NoWarn>
   </PropertyGroup>
 </Project>
