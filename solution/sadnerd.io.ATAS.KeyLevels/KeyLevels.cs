@@ -491,8 +491,8 @@ namespace sadnerd.io.ATAS.KeyLevels
                 levels.Add(new KeyLevel(_previousDay.Mid, _useShortLabels ? "PDM" : "Prev Day Mid", _dailyColor));
             }
 
-            // Monday High/Low/Mid (previous Monday if we're past Monday)
-            var mondayRange = _previousMonday.IsValid ? _previousMonday : _currentMonday;
+            // Monday High/Low/Mid - prefer current week's Monday, fallback to previous
+            var mondayRange = _currentMonday.IsValid ? _currentMonday : _previousMonday;
             if (mondayRange.IsValid)
             {
                 var isPrev = mondayRange == _previousMonday;
