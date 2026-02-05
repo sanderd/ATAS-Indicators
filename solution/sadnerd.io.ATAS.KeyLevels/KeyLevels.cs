@@ -103,6 +103,28 @@ namespace sadnerd.io.ATAS.KeyLevels
         private int _backgroundWidth = 150;
         private bool _useShortLabels = true;
 
+        #endregion
+
+        #region Fields - Level Visibility
+
+        // 4H visibility
+        private bool _show4hOpen = true;
+        private bool _show4hHighLow = true;
+
+        // Daily visibility
+        private bool _showDailyOpen = true;
+        private bool _showPrevDayHighLow = true;
+        private bool _showPrevDayMid = true;
+
+        // Monday visibility
+        private bool _showMondayHighLow = true;
+        private bool _showMondayMid = true;
+
+        // Quarterly visibility
+        private bool _showQuarterlyOpen = true;
+        private bool _showPrevQuarterHighLow = true;
+        private bool _showPrevQuarterMid = true;
+
         private readonly RenderStringFormat _labelFormat = new()
         {
             Alignment = StringAlignment.Near,
@@ -235,6 +257,120 @@ namespace sadnerd.io.ATAS.KeyLevels
             set
             {
                 _useShortLabels = value;
+                RecalculateValues();
+            }
+        }
+
+        #endregion
+
+        #region Properties - Level Visibility
+
+        [Display(Name = "Show 4H Open", GroupName = "Level Visibility - 4H", Order = 10)]
+        public bool Show4hOpen
+        {
+            get => _show4hOpen;
+            set
+            {
+                _show4hOpen = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Show 4H High/Low", GroupName = "Level Visibility - 4H", Order = 20)]
+        public bool Show4hHighLow
+        {
+            get => _show4hHighLow;
+            set
+            {
+                _show4hHighLow = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Show Daily Open", GroupName = "Level Visibility - Daily", Order = 10)]
+        public bool ShowDailyOpen
+        {
+            get => _showDailyOpen;
+            set
+            {
+                _showDailyOpen = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Show Prev Day High/Low", GroupName = "Level Visibility - Daily", Order = 20)]
+        public bool ShowPrevDayHighLow
+        {
+            get => _showPrevDayHighLow;
+            set
+            {
+                _showPrevDayHighLow = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Show Prev Day Mid", GroupName = "Level Visibility - Daily", Order = 30)]
+        public bool ShowPrevDayMid
+        {
+            get => _showPrevDayMid;
+            set
+            {
+                _showPrevDayMid = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Show Monday High/Low", GroupName = "Level Visibility - Monday", Order = 10)]
+        public bool ShowMondayHighLow
+        {
+            get => _showMondayHighLow;
+            set
+            {
+                _showMondayHighLow = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Show Monday Mid", GroupName = "Level Visibility - Monday", Order = 20)]
+        public bool ShowMondayMid
+        {
+            get => _showMondayMid;
+            set
+            {
+                _showMondayMid = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Show Quarterly Open", GroupName = "Level Visibility - Quarterly", Order = 10)]
+        public bool ShowQuarterlyOpen
+        {
+            get => _showQuarterlyOpen;
+            set
+            {
+                _showQuarterlyOpen = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Show Prev Quarter High/Low", GroupName = "Level Visibility - Quarterly", Order = 20)]
+        public bool ShowPrevQuarterHighLow
+        {
+            get => _showPrevQuarterHighLow;
+            set
+            {
+                _showPrevQuarterHighLow = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Show Prev Quarter Mid", GroupName = "Level Visibility - Quarterly", Order = 30)]
+        public bool ShowPrevQuarterMid
+        {
+            get => _showPrevQuarterMid;
+            set
+            {
+                _showPrevQuarterMid = value;
                 RecalculateValues();
             }
         }
@@ -523,53 +659,69 @@ namespace sadnerd.io.ATAS.KeyLevels
             var levels = new List<KeyLevel>();
 
             // Previous 4H High/Low
-            if (_previous4h.IsValid)
+            if (_show4hHighLow && _previous4h.IsValid)
             {
                 levels.Add(new KeyLevel(_previous4h.High, _useShortLabels ? "P4HH" : "Prev 4H High", _4hColor));
                 levels.Add(new KeyLevel(_previous4h.Low, _useShortLabels ? "P4HL" : "Prev 4H Low", _4hColor));
             }
 
             // Current 4H Open
-            if (_current4h.IsValid)
+            if (_show4hOpen && _current4h.IsValid)
             {
                 levels.Add(new KeyLevel(_current4h.Open, _useShortLabels ? "4HO" : "4H Open", _4hColor));
             }
 
             // Daily Open
-            if (_currentDay.IsValid)
+            if (_showDailyOpen && _currentDay.IsValid)
             {
                 levels.Add(new KeyLevel(_currentDay.Open, _useShortLabels ? "DO" : "Day Open", _dailyColor));
             }
 
-            // Previous Day High/Low/Mid
-            if (_previousDay.IsValid)
+            // Previous Day High/Low
+            if (_showPrevDayHighLow && _previousDay.IsValid)
             {
                 levels.Add(new KeyLevel(_previousDay.High, _useShortLabels ? "PDH" : "Prev Day High", _dailyColor));
                 levels.Add(new KeyLevel(_previousDay.Low, _useShortLabels ? "PDL" : "Prev Day Low", _dailyColor));
+            }
+
+            // Previous Day Mid
+            if (_showPrevDayMid && _previousDay.IsValid)
+            {
                 levels.Add(new KeyLevel(_previousDay.Mid, _useShortLabels ? "PDM" : "Prev Day Mid", _dailyColor));
             }
 
-            // Monday High/Low/Mid - prefer current week's Monday, fallback to previous
+            // Monday High/Low - prefer current week's Monday, fallback to previous
             var mondayRange = _currentMonday.IsValid ? _currentMonday : _previousMonday;
-            if (mondayRange.IsValid)
+            if (_showMondayHighLow && mondayRange.IsValid)
             {
                 var isPrev = mondayRange == _previousMonday;
                 levels.Add(new KeyLevel(mondayRange.High, _useShortLabels ? (isPrev ? "PMDAYH" : "MDAYH") : (isPrev ? "Prev Mon High" : "Mon High"), _mondayColor));
                 levels.Add(new KeyLevel(mondayRange.Low, _useShortLabels ? (isPrev ? "PMDAYL" : "MDAYL") : (isPrev ? "Prev Mon Low" : "Mon Low"), _mondayColor));
+            }
+
+            // Monday Mid
+            if (_showMondayMid && mondayRange.IsValid)
+            {
+                var isPrev = mondayRange == _previousMonday;
                 levels.Add(new KeyLevel(mondayRange.Mid, _useShortLabels ? (isPrev ? "PMDAYM" : "MDAYM") : (isPrev ? "Prev Mon Mid" : "Mon Mid"), _mondayColor));
             }
 
             // Quarterly Open
-            if (_currentQuarter.IsValid)
+            if (_showQuarterlyOpen && _currentQuarter.IsValid)
             {
                 levels.Add(new KeyLevel(_currentQuarter.Open, _useShortLabels ? "QO" : "Quarter Open", _quarterlyColor));
             }
 
-            // Previous Quarter High/Low/Mid
-            if (_previousQuarter.IsValid)
+            // Previous Quarter High/Low
+            if (_showPrevQuarterHighLow && _previousQuarter.IsValid)
             {
                 levels.Add(new KeyLevel(_previousQuarter.High, _useShortLabels ? "PQH" : "Prev Quarter High", _quarterlyColor));
                 levels.Add(new KeyLevel(_previousQuarter.Low, _useShortLabels ? "PQL" : "Prev Quarter Low", _quarterlyColor));
+            }
+
+            // Previous Quarter Mid
+            if (_showPrevQuarterMid && _previousQuarter.IsValid)
+            {
                 levels.Add(new KeyLevel(_previousQuarter.Mid, _useShortLabels ? "PQM" : "Prev Quarter Mid", _quarterlyColor));
             }
 
