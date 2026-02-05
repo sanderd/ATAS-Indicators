@@ -139,6 +139,7 @@ namespace sadnerd.io.ATAS.KeyLevels
         private readonly PeriodRange _current4h = new();
         private readonly PeriodRange _previous4h = new();
         private DateTime _last4hPeriodStart;
+        private DateTime _sessionStartTime; // Track session start for 4H alignment
 
         // Daily periods
         private readonly PeriodRange _currentDay = new();
@@ -452,6 +453,7 @@ namespace sadnerd.io.ATAS.KeyLevels
             _currentQuarter.Reset();
             _previousQuarter.Reset();
             _last4hPeriodStart = DateTime.MinValue;
+            _sessionStartTime = DateTime.MinValue;
             _lastDayStart = DateTime.MinValue;
             _lastMondayStart = DateTime.MinValue;
             _lastQuarter = -1;
@@ -462,11 +464,11 @@ namespace sadnerd.io.ATAS.KeyLevels
         {
             var candle = GetCandle(bar);
 
-            // Process 4-hour periods
-            Process4HourPeriod(bar, candle);
-
-            // Process daily periods
+            // Process daily periods first (need session start for 4H calculation)
             ProcessDailyPeriod(bar, candle);
+
+            // Process 4-hour periods (depends on daily session start)
+            Process4HourPeriod(bar, candle);
 
             // Process Monday (weekly) periods
             ProcessMondayPeriod(bar, candle);
@@ -522,15 +524,18 @@ namespace sadnerd.io.ATAS.KeyLevels
 
         private void Process4HourPeriod(int bar, IndicatorCandle candle)
         {
-            // Calculate the 4-hour period start time
-            var candleTime = candle.Time.AddHours(InstrumentInfo?.TimeZone ?? 0);
-            var periodStart = new DateTime(
-                candleTime.Year, 
-                candleTime.Month, 
-                candleTime.Day, 
-                (candleTime.Hour / 4) * 4, 
-                0, 
-                0);
+            // Need a valid session start time to calculate 4H periods
+            if (_sessionStartTime == DateTime.MinValue)
+                return;
+
+            var candleTime = candle.Time;
+
+            // Calculate hours since session start
+            var hoursSinceSessionStart = (candleTime - _sessionStartTime).TotalHours;
+            
+            // Determine which 4H period this candle belongs to (0 = first 4H, 1 = second 4H, etc.)
+            var periodIndex = (int)Math.Floor(hoursSinceSessionStart / 4);
+            var periodStart = _sessionStartTime.AddHours(periodIndex * 4);
 
             if (periodStart != _last4hPeriodStart)
             {
@@ -577,6 +582,11 @@ namespace sadnerd.io.ATAS.KeyLevels
 
                     _currentDay.Initialize(candle, bar);
                     _lastDayStart = candleTime;
+                    
+                    // Update session start time for 4H calculation
+                    _sessionStartTime = candleTime;
+                    // Reset 4H tracking on new session
+                    _last4hPeriodStart = DateTime.MinValue;
                 }
             }
             else if (_currentDay.IsValid)
@@ -588,6 +598,7 @@ namespace sadnerd.io.ATAS.KeyLevels
                 // Initialize on first bar if no session detected yet
                 _currentDay.Initialize(candle, bar);
                 _lastDayStart = candle.Time;
+                _sessionStartTime = candle.Time;
             }
         }
 
