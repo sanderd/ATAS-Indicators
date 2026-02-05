@@ -100,6 +100,7 @@ namespace sadnerd.io.ATAS.KeyLevels
         private CrossColor _textColor = CrossColors.White;
         private CrossColor _backgroundColor = CrossColor.FromArgb(128, 40, 40, 40);
         private int _lineWidth = 50;
+        private int _backgroundWidth = 150;
         private bool _useShortLabels = true;
 
         private readonly RenderStringFormat _labelFormat = new()
@@ -204,6 +205,18 @@ namespace sadnerd.io.ATAS.KeyLevels
             set
             {
                 _lineWidth = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Background Width", GroupName = "Drawing", Order = 75)]
+        [Range(50, 500)]
+        public int BackgroundWidth
+        {
+            get => _backgroundWidth;
+            set
+            {
+                _backgroundWidth = value;
                 RecalculateValues();
             }
         }
@@ -313,7 +326,7 @@ namespace sadnerd.io.ATAS.KeyLevels
             int anchorX = CalculateAnchorX(region);
 
             // Draw background rectangle from top to bottom at anchor position
-            int rectWidth = _lineWidth + 120; // Line width + space for text
+            int rectWidth = _backgroundWidth;
             int rectX = anchorX;
 
             // Adjust rectangle position based on anchor
