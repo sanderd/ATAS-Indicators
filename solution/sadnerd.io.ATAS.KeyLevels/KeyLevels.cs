@@ -584,9 +584,8 @@ namespace sadnerd.io.ATAS.KeyLevels
                     _lastDayStart = candleTime;
                     
                     // Update session start time for 4H calculation
+                    // Previous 4H is preserved across sessions (last 4H of previous session)
                     _sessionStartTime = candleTime;
-                    // Reset 4H tracking on new session
-                    _last4hPeriodStart = DateTime.MinValue;
                 }
             }
             else if (_currentDay.IsValid)
