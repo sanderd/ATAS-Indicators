@@ -507,6 +507,13 @@ namespace sadnerd.io.ATAS.KeyLevels
             {
                 DrawLevel(context, font, level, anchorX, region);
             }
+
+            // Check for unavailable levels and draw warning
+            var unavailableLevels = GetUnavailableLevels();
+            if (unavailableLevels.Count > 0)
+            {
+                DrawUnavailableWarning(context, font, unavailableLevels, region);
+            }
         }
 
         #endregion
@@ -728,6 +735,42 @@ namespace sadnerd.io.ATAS.KeyLevels
             return levels;
         }
 
+        private List<string> GetUnavailableLevels()
+        {
+            var unavailable = new List<string>();
+
+            // 4H checks
+            if (_show4hOpen && !_current4h.IsValid)
+                unavailable.Add("4H Open");
+            if (_show4hHighLow && !_previous4h.IsValid)
+                unavailable.Add("4H H/L");
+
+            // Daily checks
+            if (_showDailyOpen && !_currentDay.IsValid)
+                unavailable.Add("Day Open");
+            if (_showPrevDayHighLow && !_previousDay.IsValid)
+                unavailable.Add("PD H/L");
+            if (_showPrevDayMid && !_previousDay.IsValid)
+                unavailable.Add("PD Mid");
+
+            // Monday checks
+            var mondayRange = _currentMonday.IsValid ? _currentMonday : _previousMonday;
+            if (_showMondayHighLow && !mondayRange.IsValid)
+                unavailable.Add("Mon H/L");
+            if (_showMondayMid && !mondayRange.IsValid)
+                unavailable.Add("Mon Mid");
+
+            // Quarterly checks
+            if (_showQuarterlyOpen && !_currentQuarter.IsValid)
+                unavailable.Add("Q Open");
+            if (_showPrevQuarterHighLow && !_previousQuarter.IsValid)
+                unavailable.Add("PQ H/L");
+            if (_showPrevQuarterMid && !_previousQuarter.IsValid)
+                unavailable.Add("PQ Mid");
+
+            return unavailable;
+        }
+
         #endregion
 
         #region Drawing Methods
@@ -795,6 +838,39 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
 
             context.DrawString(level.Label, font, TextColor.Convert(), textRect, _labelFormat);
+        }
+
+        private void DrawUnavailableWarning(RenderContext context, RenderFont font, List<string> unavailableLevels, Rectangle region)
+        {
+            // Build short warning message
+            var message = "N/A: " + string.Join(", ", unavailableLevels);
+
+            // Measure text size
+            var textSize = context.MeasureString(message, font);
+
+            // Calculate rectangle with padding
+            const int paddingX = 10;
+            const int paddingY = 5;
+            const int topMargin = 10;
+
+            int rectWidth = textSize.Width + (paddingX * 2);
+            int rectHeight = textSize.Height + (paddingY * 2);
+            int rectX = region.Left + (region.Width - rectWidth) / 2;
+            int rectY = region.Top + topMargin;
+
+            // Draw dark red background rectangle
+            var errorBackgroundColor = Color.FromArgb(200, 139, 0, 0); // Dark red with some transparency
+            var errorRect = new Rectangle(rectX, rectY, rectWidth, rectHeight);
+            context.FillRectangle(errorBackgroundColor, errorRect);
+
+            // Draw white text centered in rectangle
+            var textRect = new Rectangle(
+                rectX + paddingX,
+                rectY + paddingY,
+                textSize.Width,
+                textSize.Height);
+
+            context.DrawString(message, font, Color.White, textRect, _labelFormat);
         }
 
         #endregion
