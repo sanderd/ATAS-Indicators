@@ -128,6 +128,12 @@ namespace sadnerd.io.ATAS.KeyLevels
         private readonly PeriodRange _previousMonday = new();
         private DateTime _lastMondayStart;
 
+        // Quarterly
+        private readonly PeriodRange _currentQuarter = new();
+        private readonly PeriodRange _previousQuarter = new();
+        private int _lastQuarter = -1;
+        private int _lastQuarterYear = -1;
+
         #endregion
 
         #region Fields - Level Colors
@@ -135,6 +141,7 @@ namespace sadnerd.io.ATAS.KeyLevels
         private CrossColor _4hColor = CrossColor.FromArgb(255, 255, 193, 7); // Amber
         private CrossColor _dailyColor = CrossColor.FromArgb(255, 33, 150, 243); // Blue
         private CrossColor _mondayColor = CrossColor.FromArgb(255, 156, 39, 176); // Purple
+        private CrossColor _quarterlyColor = CrossColor.FromArgb(255, 76, 175, 80); // Green
 
         #endregion
 
@@ -269,6 +276,17 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
         }
 
+        [Display(Name = "Quarterly Level Color", GroupName = "Level Colors", Order = 40)]
+        public CrossColor QuarterlyColor
+        {
+            get => _quarterlyColor;
+            set
+            {
+                _quarterlyColor = value;
+                RecalculateValues();
+            }
+        }
+
         #endregion
 
         #region Constructor
@@ -295,9 +313,13 @@ namespace sadnerd.io.ATAS.KeyLevels
             _previousDay.Reset();
             _currentMonday.Reset();
             _previousMonday.Reset();
+            _currentQuarter.Reset();
+            _previousQuarter.Reset();
             _last4hPeriodStart = DateTime.MinValue;
             _lastDayStart = DateTime.MinValue;
             _lastMondayStart = DateTime.MinValue;
+            _lastQuarter = -1;
+            _lastQuarterYear = -1;
         }
 
         protected override void OnCalculate(int bar, decimal value)
@@ -312,6 +334,9 @@ namespace sadnerd.io.ATAS.KeyLevels
 
             // Process Monday (weekly) periods
             ProcessMondayPeriod(bar, candle);
+
+            // Process quarterly periods
+            ProcessQuarterlyPeriod(bar, candle);
         }
 
         protected override void OnRender(RenderContext context, DrawingLayouts layout)
@@ -456,6 +481,39 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
         }
 
+        private void ProcessQuarterlyPeriod(int bar, IndicatorCandle candle)
+        {
+            var candleTime = candle.Time.AddHours(InstrumentInfo?.TimeZone ?? 0);
+            var currentQuarter = (candleTime.Month - 1) / 3 + 1; // Q1=1, Q2=2, Q3=3, Q4=4
+            var currentYear = candleTime.Year;
+
+            // Detect new quarter
+            if (currentQuarter != _lastQuarter || currentYear != _lastQuarterYear)
+            {
+                if (_lastQuarter != -1) // Not the first time
+                {
+                    if (_currentQuarter.IsValid)
+                    {
+                        // Copy current to previous
+                        _previousQuarter.Open = _currentQuarter.Open;
+                        _previousQuarter.High = _currentQuarter.High;
+                        _previousQuarter.Low = _currentQuarter.Low;
+                        _previousQuarter.Close = _currentQuarter.Close;
+                        _previousQuarter.StartTime = _currentQuarter.StartTime;
+                        _previousQuarter.StartBar = _currentQuarter.StartBar;
+                    }
+                }
+
+                _currentQuarter.Initialize(candle, bar);
+                _lastQuarter = currentQuarter;
+                _lastQuarterYear = currentYear;
+            }
+            else if (_currentQuarter.IsValid)
+            {
+                _currentQuarter.Update(candle);
+            }
+        }
+
         #endregion
 
         #region Level Collection
@@ -499,6 +557,20 @@ namespace sadnerd.io.ATAS.KeyLevels
                 levels.Add(new KeyLevel(mondayRange.High, _useShortLabels ? (isPrev ? "PMDAYH" : "MDAYH") : (isPrev ? "Prev Mon High" : "Mon High"), _mondayColor));
                 levels.Add(new KeyLevel(mondayRange.Low, _useShortLabels ? (isPrev ? "PMDAYL" : "MDAYL") : (isPrev ? "Prev Mon Low" : "Mon Low"), _mondayColor));
                 levels.Add(new KeyLevel(mondayRange.Mid, _useShortLabels ? (isPrev ? "PMDAYM" : "MDAYM") : (isPrev ? "Prev Mon Mid" : "Mon Mid"), _mondayColor));
+            }
+
+            // Quarterly Open
+            if (_currentQuarter.IsValid)
+            {
+                levels.Add(new KeyLevel(_currentQuarter.Open, _useShortLabels ? "QO" : "Quarter Open", _quarterlyColor));
+            }
+
+            // Previous Quarter High/Low/Mid
+            if (_previousQuarter.IsValid)
+            {
+                levels.Add(new KeyLevel(_previousQuarter.High, _useShortLabels ? "PQH" : "Prev Quarter High", _quarterlyColor));
+                levels.Add(new KeyLevel(_previousQuarter.Low, _useShortLabels ? "PQL" : "Prev Quarter Low", _quarterlyColor));
+                levels.Add(new KeyLevel(_previousQuarter.Mid, _useShortLabels ? "PQM" : "Prev Quarter Mid", _quarterlyColor));
             }
 
             return levels;
