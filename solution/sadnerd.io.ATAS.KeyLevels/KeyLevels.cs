@@ -110,6 +110,7 @@ namespace sadnerd.io.ATAS.KeyLevels
         // 4H visibility
         private bool _show4hOpen = true;
         private bool _show4hHighLow = true;
+        private bool _show4hMid = true;
 
         // Daily visibility
         private bool _showDailyOpen = true;
@@ -284,6 +285,17 @@ namespace sadnerd.io.ATAS.KeyLevels
             set
             {
                 _show4hHighLow = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Show 4H Mid", GroupName = "Level Visibility - 4H", Order = 30)]
+        public bool Show4hMid
+        {
+            get => _show4hMid;
+            set
+            {
+                _show4hMid = value;
                 RecalculateValues();
             }
         }
@@ -688,6 +700,12 @@ namespace sadnerd.io.ATAS.KeyLevels
                 levels.Add(new KeyLevel(_current4h.Open, _useShortLabels ? "4HO" : "4H Open", _4hColor));
             }
 
+            // Previous 4H Mid
+            if (_show4hMid && _previous4h.IsValid)
+            {
+                levels.Add(new KeyLevel(_previous4h.Mid, _useShortLabels ? "P4HM" : "Prev 4H Mid", _4hColor));
+            }
+
             // Daily Open
             if (_showDailyOpen && _currentDay.IsValid)
             {
@@ -754,6 +772,8 @@ namespace sadnerd.io.ATAS.KeyLevels
                 unavailable.Add("4H Open");
             if (_show4hHighLow && !_previous4h.IsValid)
                 unavailable.Add("4H H/L");
+            if (_show4hMid && !_previous4h.IsValid)
+                unavailable.Add("4H Mid");
 
             // Daily checks
             if (_showDailyOpen && !_currentDay.IsValid)
