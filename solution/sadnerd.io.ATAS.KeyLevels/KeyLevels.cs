@@ -44,6 +44,25 @@ namespace sadnerd.io.ATAS.KeyLevels
     }
 
     /// <summary>
+    /// Represents a level with its calculated label position (after overlap resolution)
+    /// </summary>
+    internal class LabelPosition
+    {
+        public KeyLevel Level { get; set; }
+        public int LevelY { get; set; }      // Actual price level Y coordinate
+        public int LabelY { get; set; }      // Label Y coordinate (may be offset)
+        public int LabelHeight { get; set; } // Height of the label text
+
+        public LabelPosition(KeyLevel level, int levelY, int labelHeight)
+        {
+            Level = level;
+            LevelY = levelY;
+            LabelY = levelY; // Initially same as level Y
+            LabelHeight = labelHeight;
+        }
+    }
+
+    /// <summary>
     /// Tracks high, low, open, close for a time period
     /// </summary>
     internal class PeriodRange
@@ -516,10 +535,13 @@ namespace sadnerd.io.ATAS.KeyLevels
             // Collect all levels to draw
             var levels = GetDynamicLevels();
 
-            // Draw each level
-            foreach (var level in levels)
+            // Calculate label positions with overlap prevention
+            var labelPositions = CalculateLabelPositions(context, font, levels, region);
+
+            // Draw each level with its calculated label position
+            foreach (var pos in labelPositions)
             {
-                DrawLevel(context, font, level, anchorX, region);
+                DrawLevelWithBranch(context, font, pos, anchorX, region);
             }
 
             // Check for unavailable levels and draw warning
@@ -818,53 +840,118 @@ namespace sadnerd.io.ATAS.KeyLevels
             return baseX + DistanceFromAnchor;
         }
 
-        private void DrawLevel(RenderContext context, RenderFont font, KeyLevel level, int anchorX, Rectangle region)
+        private List<LabelPosition> CalculateLabelPositions(RenderContext context, RenderFont font, List<KeyLevel> levels, Rectangle region)
         {
-            if (level.Price == 0)
-                return;
+            var positions = new List<LabelPosition>();
 
-            // Get Y coordinate for this price level
-            int y = ChartInfo.GetYByPrice(level.Price, false);
+            // First pass: create positions for all visible levels
+            foreach (var level in levels)
+            {
+                if (level.Price == 0)
+                    continue;
 
-            // Check if the level is visible on the chart
-            if (y < region.Top || y > region.Bottom)
-                return;
+                int y = ChartInfo.GetYByPrice(level.Price, false);
 
-            // Calculate line start and end positions
+                // Skip if not visible
+                if (y < region.Top || y > region.Bottom)
+                    continue;
+
+                var textSize = context.MeasureString(level.Label, font);
+                positions.Add(new LabelPosition(level, y, textSize.Height));
+            }
+
+            // Sort by Y position (top to bottom)
+            positions.Sort((a, b) => a.LevelY.CompareTo(b.LevelY));
+
+            // Second pass: resolve overlaps by pushing labels down
+            const int minSpacing = 2; // Minimum pixels between labels
+
+            for (int i = 1; i < positions.Count; i++)
+            {
+                var prev = positions[i - 1];
+                var curr = positions[i];
+
+                // Calculate the bottom of previous label and top of current label
+                int prevLabelBottom = prev.LabelY + prev.LabelHeight / 2;
+                int currLabelTop = curr.LabelY - curr.LabelHeight / 2;
+
+                // If overlapping, push current label down
+                if (currLabelTop < prevLabelBottom + minSpacing)
+                {
+                    curr.LabelY = prevLabelBottom + minSpacing + curr.LabelHeight / 2;
+                }
+            }
+
+            return positions;
+        }
+
+        private void DrawLevelWithBranch(RenderContext context, RenderFont font, LabelPosition pos, int anchorX, Rectangle region)
+        {
+            var level = pos.Level;
+            int levelY = pos.LevelY;
+            int labelY = pos.LabelY;
+
+            // Calculate line positions
             int lineStartX;
             int lineEndX;
             int textX;
+            int branchDirection; // 1 = right, -1 = left
 
             if (Anchor == AnchorPosition.Right)
             {
                 lineEndX = anchorX;
                 lineStartX = anchorX - _lineWidth;
-                textX = lineStartX - 5; // Text to the left of the line
+                textX = lineStartX - 5;
+                branchDirection = -1;
             }
             else
             {
                 lineStartX = anchorX;
                 lineEndX = anchorX + _lineWidth;
-                textX = lineEndX + 5; // Text to the right of the line
+                textX = lineEndX + 5;
+                branchDirection = 1;
             }
 
-            // Draw the horizontal line at the price level using the level's color
             var linePen = new RenderPen(level.Color.Convert(), 2);
-            context.DrawLine(linePen, lineStartX, y, lineEndX, y);
+
+            // Draw the horizontal line at the actual price level
+            context.DrawLine(linePen, lineStartX, levelY, lineEndX, levelY);
+
+            // If label is offset, draw diagonal branch line
+            int yOffset = labelY - levelY;
+            if (Math.Abs(yOffset) > 2)
+            {
+                // 45-degree diagonal: horizontal distance = vertical distance
+                int diagonalLength = Math.Abs(yOffset);
+                
+                int branchStartX = (Anchor == AnchorPosition.Right) ? lineStartX : lineEndX;
+                int branchEndX = branchStartX + (diagonalLength * branchDirection);
+
+                // Draw diagonal line from level to offset position
+                context.DrawLine(linePen, branchStartX, levelY, branchEndX, labelY);
+
+                // Update text position to be after the diagonal
+                if (Anchor == AnchorPosition.Right)
+                {
+                    textX = branchEndX - 5;
+                }
+                else
+                {
+                    textX = branchEndX + 5;
+                }
+            }
 
             // Draw the text label
             var textSize = context.MeasureString(level.Label, font);
-            
+
             Rectangle textRect;
             if (Anchor == AnchorPosition.Right)
             {
-                // For right anchor, draw text to the left of the line
-                textRect = new Rectangle(textX - textSize.Width, y - textSize.Height / 2, textSize.Width, textSize.Height);
+                textRect = new Rectangle(textX - textSize.Width, labelY - textSize.Height / 2, textSize.Width, textSize.Height);
             }
             else
             {
-                // For left/lastbar anchor, draw text to the right of the line
-                textRect = new Rectangle(textX, y - textSize.Height / 2, textSize.Width, textSize.Height);
+                textRect = new Rectangle(textX, labelY - textSize.Height / 2, textSize.Width, textSize.Height);
             }
 
             context.DrawString(level.Label, font, TextColor.Convert(), textRect, _labelFormat);
