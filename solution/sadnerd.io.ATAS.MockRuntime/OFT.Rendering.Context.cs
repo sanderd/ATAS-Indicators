@@ -45,6 +45,32 @@ public class RenderContext : IDisposable
     }
 
     /// <summary>
+    /// Draw and fill a rectangle with border and fill color
+    /// </summary>
+    public void DrawFillRectangle(OFT.Rendering.Tools.RenderPen borderPen, Color fillColor, Rectangle rect)
+    {
+        // Fill 
+        using var fillPaint = new SKPaint
+        {
+            Color = ToSkColor(fillColor),
+            Style = SKPaintStyle.Fill
+        };
+        _canvas.DrawRect(rect.X, rect.Y, rect.Width, rect.Height, fillPaint);
+        
+        // Border if pen is visible
+        if (borderPen.Color.A > 0)
+        {
+            using var strokePaint = new SKPaint
+            {
+                Color = ToSkColor(borderPen.Color),
+                StrokeWidth = borderPen.Width,
+                Style = SKPaintStyle.Stroke
+            };
+            _canvas.DrawRect(rect.X, rect.Y, rect.Width, rect.Height, strokePaint);
+        }
+    }
+
+    /// <summary>
     /// Draw text at a specified location
     /// </summary>
     public void DrawString(string text, OFT.Rendering.Tools.RenderFont font, Color color, Rectangle rect, OFT.Rendering.Tools.RenderStringFormat format)

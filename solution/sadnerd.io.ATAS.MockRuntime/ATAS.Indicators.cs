@@ -40,9 +40,20 @@ public class InstrumentInfo
 }
 
 /// <summary>
+/// IChart interface matching ATAS signature
+/// </summary>
+public interface IChart
+{
+    int GetXByBar(int bar, bool clamp = true);
+    int GetYByPrice(decimal price, bool clamp = true);
+    System.Drawing.Rectangle Region { get; }
+    string TimeFrame { get; }
+}
+
+/// <summary>
 /// Mock ChartInfo matching ATAS signature
 /// </summary>
-public class ChartInfo
+public class ChartInfo : IChart
 {
     private readonly List<IndicatorCandle> _candles;
 
@@ -56,6 +67,8 @@ public class ChartInfo
     public int BarSpacing { get; set; } = 2;
     public decimal PriceMin { get; set; }
     public decimal PriceMax { get; set; }
+    public string TimeFrame { get; set; } = "1H";
+    public System.Drawing.Rectangle Region => new(ChartOffsetX, ChartOffsetY, ChartWidth, ChartHeight);
 
     public ChartInfo(List<IndicatorCandle> candles)
     {
@@ -254,6 +267,17 @@ public abstract class Indicator
     protected virtual void OnRecalculate() { }
     protected virtual void OnCalculate(int bar, decimal value) { }
     protected virtual void OnRender(OFT.Rendering.Context.RenderContext context, OFT.Rendering.Settings.DrawingLayouts layout) { }
+
+    /// <summary>
+    /// Clear all data series (ATAS compatibility method)
+    /// </summary>
+    protected virtual void Clear()
+    {
+        foreach (var ds in DataSeries)
+        {
+            ds.Clear();
+        }
+    }
 }
 
 /// <summary>
