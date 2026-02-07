@@ -22,6 +22,13 @@ public partial class ChartPanel : UserControl
     private const int RightMargin = 80;
     private const int TopMargin = 10;
     private const int BottomMargin = 30;
+    
+    // ============================================================
+    // DEBUG: Volume histogram for PVSRA debugging - REMOVE LATER
+    // ============================================================
+    private const bool SHOW_DEBUG_VOLUME = true;
+    private const int DEBUG_VOLUME_HEIGHT = 60;
+    // ============================================================
 
     #endregion
 
@@ -260,6 +267,12 @@ public partial class ChartPanel : UserControl
             indicator.Render(renderContext, DrawingLayouts.LatestBar);
         }
 
+        // DEBUG: Volume histogram for PVSRA debugging
+        if (SHOW_DEBUG_VOLUME)
+        {
+            DrawDebugVolumeHistogram(canvas, chartWidth, chartHeight);
+        }
+
         // Draw axes
         DrawPriceAxis(canvas, info.Width, chartHeight);
         DrawTimeAxis(canvas, chartHeight, chartWidth);
@@ -482,6 +495,59 @@ public partial class ChartPanel : UserControl
         if (normalized < 7.5m) return magnitude * 5m;
         return magnitude * 10m;
     }
+
+    // ============================================================
+    // DEBUG: Volume histogram for PVSRA debugging - REMOVE LATER
+    // ============================================================
+    private void DrawDebugVolumeHistogram(SKCanvas canvas, int chartWidth, int chartHeight)
+    {
+        int histogramTop = TopMargin + chartHeight - DEBUG_VOLUME_HEIGHT;
+        int histogramHeight = DEBUG_VOLUME_HEIGHT;
+        
+        // Draw semi-transparent background
+        using var bgPaint = new SKPaint { Color = new SKColor(0, 0, 0, 128) };
+        canvas.DrawRect(LeftMargin, histogramTop, chartWidth, histogramHeight, bgPaint);
+        
+        // Find max volume in visible range for scaling
+        decimal maxVolume = 0;
+        int startBar = Math.Max(0, _chartInfo.FirstVisibleBarNumber);
+        int endBar = Math.Min(_candles.Count - 1, _chartInfo.LastVisibleBarNumber);
+        
+        for (int bar = startBar; bar <= endBar && bar < _candles.Count; bar++)
+        {
+            if (_candles[bar].Volume > maxVolume)
+                maxVolume = _candles[bar].Volume;
+        }
+        
+        if (maxVolume <= 0) return;
+        
+        // Draw volume bars
+        using var volumePaint = new SKPaint { IsAntialias = true };
+        int barWidth = Math.Max(1, _barWidth - 2);
+        
+        for (int bar = startBar; bar <= endBar && bar < _candles.Count; bar++)
+        {
+            var candle = _candles[bar];
+            int x = _chartInfo.GetXByBar(bar);
+            
+            // Scale volume bar height
+            int barHeight = (int)((double)candle.Volume / (double)maxVolume * histogramHeight);
+            int barY = histogramTop + histogramHeight - barHeight;
+            
+            // Color based on bullish/bearish
+            bool isBullish = candle.Close >= candle.Open;
+            volumePaint.Color = isBullish 
+                ? new SKColor(0, 180, 100, 180)  // Green with transparency
+                : new SKColor(200, 50, 50, 180); // Red with transparency
+            
+            canvas.DrawRect(x - barWidth / 2, barY, barWidth, barHeight, volumePaint);
+        }
+        
+        // Draw volume label
+        using var labelPaint = new SKPaint { Color = SKColors.Yellow, TextSize = 9, IsAntialias = true };
+        canvas.DrawText("VOLUME (DEBUG)", LeftMargin + 5, histogramTop + 12, labelPaint);
+    }
+    // ============================================================
 
     #endregion
 }
