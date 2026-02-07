@@ -387,7 +387,36 @@ public partial class ChartPanel : UserControl
 
     private void Canvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        _panStart = e.GetPosition(Canvas);
+        var position = e.GetPosition(Canvas);
+        var renderSize = Canvas.RenderSize;
+        
+        int chartWidth = (int)renderSize.Width - LeftMargin - RightMargin;
+        int chartHeight = (int)renderSize.Height - TopMargin - BottomMargin;
+        
+        // Check if clicking on price axis (right side)
+        if (position.X > renderSize.Width - RightMargin)
+        {
+            _dragMode = DragMode.YAxisScale;
+            _panStart = position;
+            _dragStartValue = _yScale;
+            Canvas.CaptureMouse();
+            Canvas.InvalidateVisual();
+            return;
+        }
+        
+        // Check if clicking on time axis (bottom)
+        if (position.Y > TopMargin + chartHeight)
+        {
+            _dragMode = DragMode.XAxisScale;
+            _panStart = position;
+            _dragStartValue = _barWidth;
+            Canvas.CaptureMouse();
+            Canvas.InvalidateVisual();
+            return;
+        }
+        
+        // Chart panning
+        _panStart = position;
         _panStartBar = _firstVisibleBar;
         _panStartPriceCenter = _priceCenter;
         _dragMode = DragMode.ChartPan;
@@ -398,36 +427,76 @@ public partial class ChartPanel : UserControl
     {
         _dragMode = DragMode.None;
         Canvas.ReleaseMouseCapture();
+        Canvas.InvalidateVisual();
     }
 
     private void Canvas_MouseMove(object sender, MouseEventArgs e)
     {
-        if (_dragMode == DragMode.ChartPan)
+        var position = e.GetPosition(Canvas);
+        
+        switch (_dragMode)
         {
-            var position = e.GetPosition(Canvas);
-            
-            // Guard against uninitialized chart
-            if (_chartInfo.ChartHeight <= 0 || _chartInfo.ChartWidth <= 0)
-                return;
-            
-            // Horizontal panning
-            double deltaX = _panStart.X - position.X;
-            int barDelta = (int)(deltaX / (_barWidth + _barSpacing));
-            _firstVisibleBar = _panStartBar + barDelta;
-
-            int visibleBars = _chartInfo.GetVisibleBarCount();
-            int minBar = -visibleBars / 2;
-            int maxBar = _candles.Count;
-            _firstVisibleBar = Math.Clamp(_firstVisibleBar, minBar, maxBar);
-
-            // Vertical panning
-            double deltaY = position.Y - _panStart.Y;
-            decimal priceRange = _chartInfo.PriceMax - _chartInfo.PriceMin;
-            decimal pricePerPixel = priceRange / _chartInfo.ChartHeight;
-            _priceCenter = _panStartPriceCenter + (decimal)deltaY * pricePerPixel;
-
-            Canvas.InvalidateVisual();
+            case DragMode.ChartPan:
+                HandleChartPan(position);
+                break;
+            case DragMode.XAxisScale:
+                HandleXAxisScale(position);
+                break;
+            case DragMode.YAxisScale:
+                HandleYAxisScale(position);
+                break;
         }
+    }
+
+    private void HandleChartPan(Point position)
+    {
+        // Guard against uninitialized chart
+        if (_chartInfo.ChartHeight <= 0 || _chartInfo.ChartWidth <= 0)
+            return;
+        
+        // Horizontal panning
+        double deltaX = _panStart.X - position.X;
+        int barDelta = (int)(deltaX / (_barWidth + _barSpacing));
+        _firstVisibleBar = _panStartBar + barDelta;
+
+        int visibleBars = _chartInfo.GetVisibleBarCount();
+        int minBar = -visibleBars / 2;
+        int maxBar = _candles.Count;
+        _firstVisibleBar = Math.Clamp(_firstVisibleBar, minBar, maxBar);
+
+        // Vertical panning
+        double deltaY = position.Y - _panStart.Y;
+        decimal priceRange = _chartInfo.PriceMax - _chartInfo.PriceMin;
+        decimal pricePerPixel = priceRange / _chartInfo.ChartHeight;
+        _priceCenter = _panStartPriceCenter + (decimal)deltaY * pricePerPixel;
+
+        Canvas.InvalidateVisual();
+    }
+
+    private void HandleXAxisScale(Point position)
+    {
+        double deltaX = position.X - _panStart.X;
+        
+        // Sensitivity: 100 pixels = full range change
+        double scaleFactor = deltaX / 100.0;
+        int newBarWidth = (int)(_dragStartValue + scaleFactor * 10);
+        
+        _barWidth = Math.Clamp(newBarWidth, 2, 30);
+        
+        Canvas.InvalidateVisual();
+    }
+
+    private void HandleYAxisScale(Point position)
+    {
+        double deltaY = _panStart.Y - position.Y; // Invert for natural feel
+        
+        // Sensitivity: 100 pixels = 1.0 scale change
+        double scaleDelta = deltaY / 100.0;
+        double newScale = _dragStartValue + scaleDelta;
+        
+        _yScale = Math.Clamp(newScale, 0.1, 3.0);
+        
+        Canvas.InvalidateVisual();
     }
 
     #endregion
