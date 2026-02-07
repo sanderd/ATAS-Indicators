@@ -158,6 +158,9 @@ public partial class ChartPanel : UserControl
             var lastCandle = _candles[^1];
             _priceCenter = (lastCandle.High + lastCandle.Low) / 2;
         }
+        
+        // Force re-render after data loads
+        Canvas.InvalidateVisual();
     }
 
     public void AddIndicator(Indicator indicator)
@@ -321,6 +324,10 @@ public partial class ChartPanel : UserControl
         if (_dragMode == DragMode.ChartPan)
         {
             var position = e.GetPosition(Canvas);
+            
+            // Guard against uninitialized chart
+            if (_chartInfo.ChartHeight <= 0 || _chartInfo.ChartWidth <= 0)
+                return;
             
             // Horizontal panning
             double deltaX = _panStart.X - position.X;
