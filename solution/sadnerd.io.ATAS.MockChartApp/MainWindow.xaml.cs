@@ -579,6 +579,7 @@ public partial class MainWindow : Window
 
     private void HandleChartPan(Point position)
     {
+        // Horizontal panning (bars)
         double deltaX = _panStart.X - position.X;
         int barDelta = (int)(deltaX / (_barWidth + _barSpacing));
         
@@ -590,6 +591,12 @@ public partial class MainWindow : Window
         int minBar = -visibleBars / 2; // Allow half screen empty on left
         int maxBar = _candles.Count; // Allow full empty screen on right
         _firstVisibleBar = Math.Clamp(_firstVisibleBar, minBar, maxBar);
+        
+        // Vertical panning (price) - inverted for natural feel
+        double deltaY = position.Y - _panStart.Y;
+        decimal priceRange = _chartInfo.PriceMax - _chartInfo.PriceMin;
+        decimal pricePerPixel = priceRange / _chartInfo.ChartHeight;
+        _priceCenter = _panStartPriceCenter + (decimal)deltaY * pricePerPixel;
         
         ChartCanvas.InvalidateVisual();
     }
