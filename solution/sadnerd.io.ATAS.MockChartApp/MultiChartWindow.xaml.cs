@@ -18,8 +18,12 @@ public partial class MultiChartWindow : Window
     {
         InitializeComponent();
         
-        // Initialize with 1x2 layout (2 side-by-side charts)
-        SetLayout(1, 2);
+        // Load layout from disk or use default
+        var layout = ChartLayoutManager.LoadLayout();
+        ApplyLayout(layout);
+        
+        // Save layout when window closes
+        Closing += (_, _) => SaveCurrentLayout();
     }
 
     #region Layout Management
@@ -162,6 +166,92 @@ public partial class MultiChartWindow : Window
         int newCols = _cols + 1;
         if (newCols > 4) newCols = 1; // Wrap around
         SetLayout(_rows, newCols);
+    }
+
+    private void ApplyLayout(LayoutConfig layout)
+    {
+        _rows = layout.Rows;
+        _cols = layout.Cols;
+        
+        // Clear existing
+        ChartContainer.Children.Clear();
+        ChartContainer.RowDefinitions.Clear();
+        ChartContainer.ColumnDefinitions.Clear();
+        _chartPanels.Clear();
+        _selectedChart = null;
+        
+        // Create grid
+        for (int r = 0; r < _rows; r++)
+        {
+            ChartContainer.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        }
+        for (int c = 0; c < _cols; c++)
+        {
+            ChartContainer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        }
+        
+        // Create chart panels from config
+        for (int i = 0; i < layout.Charts.Count && i < _rows * _cols; i++)
+        {
+            var config = layout.Charts[i];
+            var chart = new ChartPanel
+            {
+                Symbol = config.Symbol,
+                Timeframe = config.Timeframe,
+                Margin = new Thickness(1)
+            };
+            
+            // Add indicators based on config
+            foreach (var indicatorName in config.Indicators)
+            {
+                if (indicatorName == "KeyLevels")
+                {
+                    chart.AddIndicator(new sadnerd.io.ATAS.KeyLevels.KeyLevels());
+                }
+                else if (indicatorName == "PvsraCandles")
+                {
+                    chart.AddIndicator(new sadnerd.io.ATAS.PvsraCandles.PvsraCandles());
+                }
+                else if (indicatorName == "EmaWithCloud")
+                {
+                    chart.AddIndicator(new sadnerd.io.ATAS.EmaWithCloud.EmaWithCloud());
+                }
+            }
+            
+            // Hook up events
+            chart.OnChartClicked += Chart_OnChartClicked;
+            chart.OnRemoveRequested += Chart_OnRemoveRequested;
+            
+            int row = i / _cols;
+            int col = i % _cols;
+            Grid.SetRow(chart, row);
+            Grid.SetColumn(chart, col);
+            ChartContainer.Children.Add(chart);
+            _chartPanels.Add(chart);
+        }
+        
+        // Select first chart by default
+        if (_chartPanels.Count > 0)
+        {
+            SelectChart(_chartPanels[0]);
+        }
+    }
+
+    private void SaveCurrentLayout()
+    {
+        var layout = new LayoutConfig
+        {
+            Rows = _rows,
+            Cols = _cols,
+            Charts = _chartPanels.Select(chart => new ChartConfig
+            {
+                Symbol = chart.Symbol,
+                Timeframe = chart.Timeframe,
+                Indicators = new List<string> { "KeyLevels" } // Default for now
+            }).ToList()
+        };
+        
+        ChartLayoutManager.SaveLayout(layout);
     }
 
     #endregion
