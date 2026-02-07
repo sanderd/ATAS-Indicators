@@ -29,9 +29,19 @@ public partial class MainWindow : Window
     #region Fields
 
     private readonly List<IndicatorCandle> _candles;
-    private readonly sadnerd.io.ATAS.KeyLevels.KeyLevels _indicator;
+    private readonly List<Indicator> _activeIndicators = new();
     private readonly ChartInfo _chartInfo;
     private readonly Container _container;
+
+    // Available indicator types for registry
+    private static readonly Dictionary<string, Type> AvailableIndicatorTypes = new()
+    {
+        { "Key Levels", typeof(sadnerd.io.ATAS.KeyLevels.KeyLevels) },
+        // PvsraCandles and EmaWithCloud require additional MockRuntime types
+        // Uncomment when their mock dependencies are added
+        // { "PVSRA Candles", typeof(sadnerd.io.ATAS.PvsraCandles.PvsraCandles) },
+        // { "EMA with Cloud", typeof(sadnerd.io.ATAS.EmaWithCloud.EmaWithCloud) }
+    };
 
     private int _firstVisibleBar = 0;
     private int _barWidth = 8;
@@ -74,15 +84,8 @@ public partial class MainWindow : Window
             // Initialize container
             _container = new Container();
 
-            // Initialize indicator (using the REAL KeyLevels from the KeyLevels project)
-            _indicator = new sadnerd.io.ATAS.KeyLevels.KeyLevels()
-            {
-                ChartInfo = _chartInfo,
-                Container = _container,
-                InstrumentInfo = new InstrumentInfo { TimeZone = 0, TickSize = 0.25m }
-            };
-            _indicator.SetCandles(_candles);
-            _indicator.Calculate(); // Process candles to populate period data
+            // Add default indicator (KeyLevels)
+            AddIndicator("Key Levels");
 
             // Calculate initial center price
             if (_candles.Count > 0)
@@ -100,6 +103,54 @@ public partial class MainWindow : Window
             System.Windows.MessageBox.Show($"Error initializing: {ex.Message}\n\n{ex.StackTrace}", "Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
             throw;
         }
+    }
+
+    #endregion
+
+    #region Indicator Management
+
+    /// <summary>
+    /// Add an indicator by name from the registry
+    /// </summary>
+    private void AddIndicator(string name)
+    {
+        if (!AvailableIndicatorTypes.TryGetValue(name, out var type))
+            return;
+
+        // Check if already active
+        if (_activeIndicators.Any(i => i.GetType() == type))
+            return;
+
+        var indicator = (Indicator)Activator.CreateInstance(type)!;
+        indicator.ChartInfo = _chartInfo;
+        indicator.Container = _container;
+        indicator.InstrumentInfo = new InstrumentInfo { TimeZone = 0, TickSize = 0.25m };
+        indicator.SetCandles(_candles);
+        indicator.Calculate();
+
+        _activeIndicators.Add(indicator);
+    }
+
+    /// <summary>
+    /// Remove an indicator by type
+    /// </summary>
+    private void RemoveIndicator(Type type)
+    {
+        var indicator = _activeIndicators.FirstOrDefault(i => i.GetType() == type);
+        if (indicator != null)
+        {
+            _activeIndicators.Remove(indicator);
+        }
+    }
+
+    /// <summary>
+    /// Check if an indicator type is currently active
+    /// </summary>
+    private bool IsIndicatorActive(string name)
+    {
+        if (!AvailableIndicatorTypes.TryGetValue(name, out var type))
+            return false;
+        return _activeIndicators.Any(i => i.GetType() == type);
     }
 
     #endregion
@@ -141,9 +192,15 @@ public partial class MainWindow : Window
         // Draw candles
         DrawCandles(canvas);
 
-        // Draw indicator
+        // Draw all active indicators
         using var renderContext = new OFT.Rendering.Context.RenderContext(canvas);
-        _indicator.Render(renderContext, DrawingLayouts.LatestBar);
+        foreach (var indicator in _activeIndicators)
+        {
+            // Draw DataSeries (clouds, lines) first
+            DrawIndicatorDataSeries(canvas, indicator, _chartInfo);
+            // Then draw custom rendering
+            indicator.Render(renderContext, DrawingLayouts.LatestBar);
+        }
 
         // Draw price axis (with drag highlight)
         DrawPriceAxis(canvas, info.Width, chartHeight);
@@ -598,33 +655,41 @@ public partial class MainWindow : Window
 
     private void ApplySettings_Click(object sender, RoutedEventArgs e)
     {
+        // Apply settings to KeyLevels indicator if active
+        var keyLevels = _activeIndicators
+            .OfType<sadnerd.io.ATAS.KeyLevels.KeyLevels>()
+            .FirstOrDefault();
+
+        if (keyLevels == null)
+            return;
+
         // Apply indicator settings
-        _indicator.FontSize = (int)FontSizeSlider.Value;
-        _indicator.LineWidth = (int)LineWidthSlider.Value;
-        _indicator.BackgroundWidth = (int)BGWidthSlider.Value;
-        _indicator.UseShortLabels = ShortLabelsCheck.IsChecked ?? true;
+        keyLevels.FontSize = (int)FontSizeSlider.Value;
+        keyLevels.LineWidth = (int)LineWidthSlider.Value;
+        keyLevels.BackgroundWidth = (int)BGWidthSlider.Value;
+        keyLevels.UseShortLabels = ShortLabelsCheck.IsChecked ?? true;
 
         // 4H visibility
-        _indicator.Show4hOpen = Show4hOpenCheck.IsChecked ?? true;
-        _indicator.Show4hHighLow = Show4hHighLowCheck.IsChecked ?? true;
-        _indicator.Show4hMid = Show4hMidCheck.IsChecked ?? true;
+        keyLevels.Show4hOpen = Show4hOpenCheck.IsChecked ?? true;
+        keyLevels.Show4hHighLow = Show4hHighLowCheck.IsChecked ?? true;
+        keyLevels.Show4hMid = Show4hMidCheck.IsChecked ?? true;
 
         // Daily visibility
-        _indicator.ShowDailyOpen = ShowDailyOpenCheck.IsChecked ?? true;
-        _indicator.ShowPrevDayHighLow = ShowPrevDayHLCheck.IsChecked ?? true;
-        _indicator.ShowPrevDayMid = ShowPrevDayMidCheck.IsChecked ?? true;
+        keyLevels.ShowDailyOpen = ShowDailyOpenCheck.IsChecked ?? true;
+        keyLevels.ShowPrevDayHighLow = ShowPrevDayHLCheck.IsChecked ?? true;
+        keyLevels.ShowPrevDayMid = ShowPrevDayMidCheck.IsChecked ?? true;
 
         // Monday visibility
-        _indicator.ShowMondayHighLow = ShowMondayHLCheck.IsChecked ?? true;
-        _indicator.ShowMondayMid = ShowMondayMidCheck.IsChecked ?? true;
+        keyLevels.ShowMondayHighLow = ShowMondayHLCheck.IsChecked ?? true;
+        keyLevels.ShowMondayMid = ShowMondayMidCheck.IsChecked ?? true;
 
         // Quarterly visibility
-        _indicator.ShowQuarterlyOpen = ShowQuarterlyOpenCheck.IsChecked ?? true;
-        _indicator.ShowPrevQuarterHighLow = ShowPrevQuarterHLCheck.IsChecked ?? true;
-        _indicator.ShowPrevQuarterMid = ShowPrevQuarterMidCheck.IsChecked ?? true;
+        keyLevels.ShowQuarterlyOpen = ShowQuarterlyOpenCheck.IsChecked ?? true;
+        keyLevels.ShowPrevQuarterHighLow = ShowPrevQuarterHLCheck.IsChecked ?? true;
+        keyLevels.ShowPrevQuarterMid = ShowPrevQuarterMidCheck.IsChecked ?? true;
 
         // Recalculate indicator
-        _indicator.Calculate();
+        keyLevels.Calculate();
 
         ChartCanvas.InvalidateVisual();
     }
