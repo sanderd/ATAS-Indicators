@@ -37,10 +37,8 @@ public partial class MainWindow : Window
     private static readonly Dictionary<string, Type> AvailableIndicatorTypes = new()
     {
         { "Key Levels", typeof(sadnerd.io.ATAS.KeyLevels.KeyLevels) },
-        // PvsraCandles and EmaWithCloud require additional MockRuntime types
-        // Uncomment when their mock dependencies are added
-        // { "PVSRA Candles", typeof(sadnerd.io.ATAS.PvsraCandles.PvsraCandles) },
-        // { "EMA with Cloud", typeof(sadnerd.io.ATAS.EmaWithCloud.EmaWithCloud) }
+        { "PVSRA Candles", typeof(sadnerd.io.ATAS.PvsraCandles.PvsraCandles) },
+        { "EMA with Cloud", typeof(sadnerd.io.ATAS.EmaWithCloud.EmaWithCloud) }
     };
 
     private int _firstVisibleBar = 0;
