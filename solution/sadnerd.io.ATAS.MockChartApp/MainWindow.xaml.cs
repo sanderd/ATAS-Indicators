@@ -482,7 +482,7 @@ public partial class MainWindow : Window
         {
             // Y scale (price zoom)
             double delta = e.Delta > 0 ? 0.1 : -0.1;
-            _yScale = Math.Clamp(_yScale + delta, 0.5, 3.0);
+            _yScale = Math.Clamp(_yScale + delta, 0.1, 3.0);
             YScaleSlider.Value = _yScale;
         }
         else
@@ -616,7 +616,7 @@ public partial class MainWindow : Window
         double scaleDelta = deltaY / 100.0;
         double newScale = _dragStartValue + scaleDelta;
         
-        _yScale = Math.Clamp(newScale, 0.5, 3.0);
+        _yScale = Math.Clamp(newScale, 0.1, 3.0);
         YScaleSlider.Value = _yScale;
         
         ChartCanvas.InvalidateVisual();

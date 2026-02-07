@@ -50,7 +50,7 @@
                 <Label x:Name="BarWidthLabel" Content="8" Width="25" VerticalAlignment="Center"/>
 
                 <Label Content="Y Scale:" VerticalAlignment="Center" Margin="15,0,0,0"/>
-                <Slider x:Name="YScaleSlider" Minimum="0.5" Maximum="3" Value="1" 
+                <Slider x:Name="YScaleSlider" Minimum="0.1" Maximum="3" Value="1" 
                         VerticalAlignment="Center"
                         ValueChanged="YScaleSlider_ValueChanged"/>
                 <Label x:Name="YScaleLabel" Content="1.0x" Width="35" VerticalAlignment="Center"/>
