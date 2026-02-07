@@ -860,29 +860,152 @@ namespace sadnerd.io.ATAS.KeyLevels
                 positions.Add(new LabelPosition(level, y, textSize.Height));
             }
 
-            // Sort by Y position (top to bottom)
+            // Sort by original Y position (top to bottom) - this order is STABLE
             positions.Sort((a, b) => a.LevelY.CompareTo(b.LevelY));
 
-            // Second pass: resolve overlaps by pushing labels down
-            const int minSpacing = 2; // Minimum pixels between labels
+            if (positions.Count < 2)
+                return positions;
 
+            const int minSpacing = 2;
+            const int maxIterations = 20;
+
+            // Global optimization using iterative relaxation
+            // Goal: minimize sum of |LabelY - LevelY| while ensuring no overlaps
+            
+            for (int iteration = 0; iteration < maxIterations; iteration++)
+            {
+                bool changed = false;
+
+                // For each adjacent pair, if overlapping, split the required shift
+                for (int i = 0; i < positions.Count - 1; i++)
+                {
+                    var upper = positions[i];
+                    var lower = positions[i + 1];
+
+                    int upperBottom = upper.LabelY + upper.LabelHeight / 2;
+                    int lowerTop = lower.LabelY - lower.LabelHeight / 2;
+                    int overlap = upperBottom + minSpacing - lowerTop;
+
+                    if (overlap > 0)
+                    {
+                        changed = true;
+
+                        // Calculate how much room each label has to move
+                        int upperRoom = CalculateUpwardRoom(positions, i, minSpacing);
+                        int lowerRoom = CalculateDownwardRoom(positions, i + 1, minSpacing);
+
+                        // Distribute the shift proportionally based on available room
+                        int totalRoom = upperRoom + lowerRoom;
+                        if (totalRoom > 0)
+                        {
+                            int upperShift = (overlap * upperRoom) / totalRoom;
+                            int lowerShift = overlap - upperShift;
+
+                            // Apply shifts (upper goes up, lower goes down)
+                            ShiftLabelAndNeighbors(positions, i, -upperShift, minSpacing, true);
+                            ShiftLabelAndNeighbors(positions, i + 1, lowerShift, minSpacing, false);
+                        }
+                        else
+                        {
+                            // No room - split evenly
+                            int halfShift = overlap / 2;
+                            ShiftLabelAndNeighbors(positions, i, -halfShift, minSpacing, true);
+                            ShiftLabelAndNeighbors(positions, i + 1, overlap - halfShift, minSpacing, false);
+                        }
+                    }
+                }
+
+                if (!changed)
+                    break;
+            }
+
+            // Final pass: ensure no overlaps (safety net)
             for (int i = 1; i < positions.Count; i++)
             {
                 var prev = positions[i - 1];
                 var curr = positions[i];
 
-                // Calculate the bottom of previous label and top of current label
-                int prevLabelBottom = prev.LabelY + prev.LabelHeight / 2;
-                int currLabelTop = curr.LabelY - curr.LabelHeight / 2;
-
-                // If overlapping, push current label down
-                if (currLabelTop < prevLabelBottom + minSpacing)
+                int minY = prev.LabelY + prev.LabelHeight / 2 + minSpacing + curr.LabelHeight / 2;
+                if (curr.LabelY < minY)
                 {
-                    curr.LabelY = prevLabelBottom + minSpacing + curr.LabelHeight / 2;
+                    curr.LabelY = minY;
                 }
             }
 
             return positions;
+        }
+
+        private int CalculateUpwardRoom(List<LabelPosition> positions, int index, int minSpacing)
+        {
+            var pos = positions[index];
+            
+            // Room is limited by: original position (don't go above it too much) and previous label
+            int minAllowedY = pos.LevelY - pos.LabelHeight * 2; // Allow some movement above original
+            
+            if (index > 0)
+            {
+                var prev = positions[index - 1];
+                int prevBottom = prev.LabelY + prev.LabelHeight / 2 + minSpacing + pos.LabelHeight / 2;
+                minAllowedY = Math.Max(minAllowedY, prevBottom);
+            }
+
+            return Math.Max(0, pos.LabelY - minAllowedY);
+        }
+
+        private int CalculateDownwardRoom(List<LabelPosition> positions, int index, int minSpacing)
+        {
+            var pos = positions[index];
+            
+            // Room is limited by: original position (don't go below it too much) and next label
+            int maxAllowedY = pos.LevelY + pos.LabelHeight * 2; // Allow some movement below original
+            
+            if (index < positions.Count - 1)
+            {
+                var next = positions[index + 1];
+                int nextTop = next.LabelY - next.LabelHeight / 2 - minSpacing - pos.LabelHeight / 2;
+                maxAllowedY = Math.Min(maxAllowedY, nextTop);
+            }
+
+            return Math.Max(0, maxAllowedY - pos.LabelY);
+        }
+
+        private void ShiftLabelAndNeighbors(List<LabelPosition> positions, int index, int shift, int minSpacing, bool goingUp)
+        {
+            if (shift == 0) return;
+
+            positions[index].LabelY += shift;
+
+            // Propagate shift to neighbors if needed
+            if (goingUp && index > 0)
+            {
+                // Check if we now overlap with the label above
+                var curr = positions[index];
+                var prev = positions[index - 1];
+                
+                int prevBottom = prev.LabelY + prev.LabelHeight / 2;
+                int currTop = curr.LabelY - curr.LabelHeight / 2;
+                
+                if (currTop < prevBottom + minSpacing)
+                {
+                    int neededShift = currTop - prevBottom - minSpacing;
+                    ShiftLabelAndNeighbors(positions, index - 1, neededShift, minSpacing, true);
+                }
+            }
+            else if (!goingUp && index < positions.Count - 1)
+            {
+                // Check if we now overlap with the label below
+                var curr = positions[index];
+                var next = positions[index + 1];
+                
+                int currBottom = curr.LabelY + curr.LabelHeight / 2;
+                int nextTop = next.LabelY - next.LabelHeight / 2;
+                
+                if (currBottom + minSpacing > nextTop)
+                {
+                    int neededShift = currBottom + minSpacing - nextTop;
+                    ShiftLabelAndNeighbors(positions, index + 1, neededShift, minSpacing, false);
+                }
+            }
         }
 
         private void DrawLevelWithBranch(RenderContext context, RenderFont font, LabelPosition pos, int anchorX, Rectangle region)
