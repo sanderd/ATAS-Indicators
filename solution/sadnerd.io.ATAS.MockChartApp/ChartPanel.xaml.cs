@@ -69,6 +69,29 @@ public partial class ChartPanel : UserControl
 
     public string Symbol { get; set; } = "ES";
 
+    private bool _isSelected;
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            _isSelected = value;
+            SelectionBorder.BorderBrush = value 
+                ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(100, 180, 255)) 
+                : System.Windows.Media.Brushes.Transparent;
+        }
+    }
+
+    /// <summary>
+    /// Event raised when the remove button is clicked
+    /// </summary>
+    public event EventHandler? OnRemoveRequested;
+
+    /// <summary>
+    /// Event raised when the chart is clicked (for selection)
+    /// </summary>
+    public event EventHandler? OnChartClicked;
+
     #endregion
 
     #region Constructor
@@ -167,6 +190,18 @@ public partial class ChartPanel : UserControl
         {
             Timeframe = TimeframeExtensions.CommonTimeframes[TimeframeCombo.SelectedIndex];
         }
+    }
+
+    private void ChartPanel_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        // Raise chart clicked event for parent to handle selection
+        OnChartClicked?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void RemoveButton_Click(object sender, RoutedEventArgs e)
+    {
+        // Raise remove requested event for parent to handle removal
+        OnRemoveRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void Canvas_PaintSurface(object sender, SKPaintSurfaceEventArgs e)

@@ -10,6 +10,7 @@ namespace sadnerd.io.ATAS.MockChartApp;
 public partial class MultiChartWindow : Window
 {
     private readonly List<ChartPanel> _chartPanels = new();
+    private ChartPanel? _selectedChart;
     private int _rows = 2;
     private int _cols = 2;
 
@@ -33,6 +34,7 @@ public partial class MultiChartWindow : Window
         ChartContainer.RowDefinitions.Clear();
         ChartContainer.ColumnDefinitions.Clear();
         _chartPanels.Clear();
+        _selectedChart = null;
         
         // Create grid
         for (int r = 0; r < rows; r++)
@@ -68,10 +70,83 @@ public partial class MultiChartWindow : Window
                 var keyLevels = new sadnerd.io.ATAS.KeyLevels.KeyLevels();
                 chart.AddIndicator(keyLevels);
                 
+                // Hook up events
+                chart.OnChartClicked += Chart_OnChartClicked;
+                chart.OnRemoveRequested += Chart_OnRemoveRequested;
+                
                 Grid.SetRow(chart, r);
                 Grid.SetColumn(chart, c);
                 ChartContainer.Children.Add(chart);
                 _chartPanels.Add(chart);
+            }
+        }
+        
+        // Select first chart by default
+        if (_chartPanels.Count > 0)
+        {
+            SelectChart(_chartPanels[0]);
+        }
+    }
+
+    private void SelectChart(ChartPanel chart)
+    {
+        // Deselect previous
+        if (_selectedChart != null)
+        {
+            _selectedChart.IsSelected = false;
+        }
+        
+        // Select new
+        _selectedChart = chart;
+        chart.IsSelected = true;
+    }
+
+    private void Chart_OnChartClicked(object? sender, EventArgs e)
+    {
+        if (sender is ChartPanel chart)
+        {
+            SelectChart(chart);
+        }
+    }
+
+    private void Chart_OnRemoveRequested(object? sender, EventArgs e)
+    {
+        if (sender is not ChartPanel chart)
+            return;
+            
+        // Don't allow removing the last chart
+        if (_chartPanels.Count <= 1)
+        {
+            MessageBox.Show("Cannot remove the last chart.", "Remove Chart", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        
+        // Remove from grid and list
+        ChartContainer.Children.Remove(chart);
+        _chartPanels.Remove(chart);
+        
+        // If we removed the selected chart, select another
+        if (_selectedChart == chart && _chartPanels.Count > 0)
+        {
+            SelectChart(_chartPanels[0]);
+        }
+        
+        // Reorganize grid layout
+        ReorganizeGrid();
+    }
+
+    private void ReorganizeGrid()
+    {
+        // Simple reorganization: put all charts into current grid cells
+        int index = 0;
+        for (int r = 0; r < _rows && index < _chartPanels.Count; r++)
+        {
+            for (int c = 0; c < _cols && index < _chartPanels.Count; c++)
+            {
+                var chart = _chartPanels[index];
+                Grid.SetRow(chart, r);
+                Grid.SetColumn(chart, c);
+                index++;
             }
         }
     }
