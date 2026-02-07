@@ -142,6 +142,12 @@ public class ChartInfo
         PriceMin = minPrice - range * padding;
         PriceMax = maxPrice + range * padding;
     }
+
+    public void SetPriceRange(decimal min, decimal max)
+    {
+        PriceMin = min;
+        PriceMax = max;
+    }
 }
 
 /// <summary>
