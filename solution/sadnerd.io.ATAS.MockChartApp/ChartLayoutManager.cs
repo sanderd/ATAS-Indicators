@@ -80,8 +80,8 @@ public static class ChartLayoutManager
             Cols = 2,
             Charts = new List<ChartConfig>
             {
-                new() { Symbol = "ES", Timeframe = Timeframe.H1, Indicators = new() { "KeyLevels" } },
-                new() { Symbol = "ES", Timeframe = Timeframe.M15, Indicators = new() { "KeyLevels" } }
+                new() { Symbol = "ES", Timeframe = Timeframe.H1, Indicators = new() { "KeyLevels", "PvsraCandles" } },
+                new() { Symbol = "ES", Timeframe = Timeframe.M15, Indicators = new() { "KeyLevels", "PvsraCandles" } }
             }
         };
     }

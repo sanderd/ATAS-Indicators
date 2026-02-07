@@ -416,6 +416,7 @@ public partial class ChartPanel : UserControl
         using var bullPaint = new SKPaint { Color = new SKColor(0, 200, 100), IsAntialias = true };
         using var bearPaint = new SKPaint { Color = new SKColor(200, 50, 50), IsAntialias = true };
         using var wickPaint = new SKPaint { Color = new SKColor(150, 150, 150), StrokeWidth = 1, IsAntialias = true };
+        using var customPaint = new SKPaint { IsAntialias = true };
 
         int startBar = Math.Max(0, _chartInfo.FirstVisibleBarNumber);
         int endBar = Math.Min(_candles.Count - 1, _chartInfo.LastVisibleBarNumber);
@@ -431,6 +432,15 @@ public partial class ChartPanel : UserControl
 
             bool isBullish = candle.Close >= candle.Open;
             var paint = isBullish ? bullPaint : bearPaint;
+            
+            // Check for paintbars override from indicators (e.g., PVSRA)
+            var paintbarColor = GetPaintbarColorForBar(bar);
+            if (paintbarColor.HasValue)
+            {
+                var c = paintbarColor.Value;
+                customPaint.Color = new SKColor(c.R, c.G, c.B, c.A);
+                paint = customPaint;
+            }
 
             // Wick
             canvas.DrawLine(x, yHigh, x, yLow, wickPaint);
@@ -441,6 +451,29 @@ public partial class ChartPanel : UserControl
             int bodyWidth = Math.Max(1, _barWidth - 2);
             canvas.DrawRect(x - bodyWidth / 2, bodyTop, bodyWidth, bodyHeight, paint);
         }
+    }
+
+    /// <summary>
+    /// Check if any indicator has a PaintbarsDataSeries color for this bar
+    /// </summary>
+    private CrossColor? GetPaintbarColorForBar(int bar)
+    {
+        foreach (var indicator in _activeIndicators)
+        {
+            foreach (var ds in indicator.DataSeries)
+            {
+                if (ds is PaintbarsDataSeries paintbars && paintbars.HasColor(bar))
+                {
+                    var color = paintbars[bar];
+                    // Check if it's not transparent/default
+                    if (color.A > 0)
+                    {
+                        return color;
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     private void DrawPriceAxis(SKCanvas canvas, int width, int chartHeight)
