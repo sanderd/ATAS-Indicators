@@ -17,8 +17,8 @@ public partial class MultiChartWindow : Window
     {
         InitializeComponent();
         
-        // Initialize with 2x2 layout
-        SetLayout(2, 2);
+        // Initialize with 1x2 layout (2 side-by-side charts)
+        SetLayout(1, 2);
     }
 
     #region Layout Management

@@ -11,18 +11,8 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        // Check for multi-chart mode
-        bool multiChart = e.Args.Contains("--multi") || e.Args.Contains("-m");
-
-        if (multiChart)
-        {
-            MainWindow = new MultiChartWindow();
-        }
-        else
-        {
-            MainWindow = new MainWindow();
-        }
-        
+        // Always start with multi-chart view
+        MainWindow = new MultiChartWindow();
         MainWindow.Show();
     }
 }
