@@ -185,6 +185,42 @@ public partial class ChartPanel : UserControl
         Canvas.InvalidateVisual();
     }
 
+    /// <summary>
+    /// Get list of active indicator names for serialization
+    /// </summary>
+    public List<string> GetActiveIndicatorNames()
+    {
+        var names = new List<string>();
+        foreach (var indicator in _activeIndicators)
+        {
+            var typeName = indicator.GetType().Name;
+            names.Add(typeName);
+        }
+        return names;
+    }
+
+    /// <summary>
+    /// Remove indicator by type name
+    /// </summary>
+    public void RemoveIndicatorByName(string typeName)
+    {
+        var toRemove = _activeIndicators.FirstOrDefault(i => i.GetType().Name == typeName);
+        if (toRemove != null)
+        {
+            _activeIndicators.Remove(toRemove);
+            Canvas.InvalidateVisual();
+        }
+    }
+
+    /// <summary>
+    /// Clear all indicators
+    /// </summary>
+    public void ClearIndicators()
+    {
+        _activeIndicators.Clear();
+        Canvas.InvalidateVisual();
+    }
+
     #endregion
 
     #region Event Handlers

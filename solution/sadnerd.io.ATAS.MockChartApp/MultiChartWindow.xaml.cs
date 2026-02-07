@@ -103,6 +103,12 @@ public partial class MultiChartWindow : Window
         // Select new
         _selectedChart = chart;
         chart.IsSelected = true;
+        
+        // Update settings panel if visible
+        if (SettingsPanel.Visibility == Visibility.Visible)
+        {
+            UpdateSettingsPanelForSelectedChart();
+        }
     }
 
     private void Chart_OnChartClicked(object? sender, EventArgs e)
@@ -247,11 +253,102 @@ public partial class MultiChartWindow : Window
             {
                 Symbol = chart.Symbol,
                 Timeframe = chart.Timeframe,
-                Indicators = new List<string> { "KeyLevels" } // Default for now
+                Indicators = chart.GetActiveIndicatorNames()
             }).ToList()
         };
         
         ChartLayoutManager.SaveLayout(layout);
+    }
+
+    #endregion
+
+    #region Settings Panel
+
+    private void ToggleSettings_Click(object sender, RoutedEventArgs e)
+    {
+        SettingsPanel.Visibility = SettingsPanel.Visibility == Visibility.Visible 
+            ? Visibility.Collapsed 
+            : Visibility.Visible;
+        
+        if (SettingsPanel.Visibility == Visibility.Visible)
+        {
+            UpdateSettingsPanelForSelectedChart();
+        }
+    }
+
+    private void UpdateSettingsPanelForSelectedChart()
+    {
+        if (_selectedChart == null)
+        {
+            SelectedChartLabel.Text = "No chart selected";
+            KeyLevelsCheck.IsChecked = false;
+            PvsraCandlesCheck.IsChecked = false;
+            EmaCloudCheck.IsChecked = false;
+            return;
+        }
+        
+        SelectedChartLabel.Text = $"Selected: {_selectedChart.Symbol} {_selectedChart.Timeframe.ToDisplayString()}";
+        
+        var indicators = _selectedChart.GetActiveIndicatorNames();
+        KeyLevelsCheck.IsChecked = indicators.Contains("KeyLevels");
+        PvsraCandlesCheck.IsChecked = indicators.Contains("PvsraCandles");
+        EmaCloudCheck.IsChecked = indicators.Contains("EmaWithCloud");
+    }
+
+    private void IndicatorToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedChart == null || sender is not CheckBox checkBox)
+            return;
+            
+        var indicatorName = checkBox.Tag?.ToString();
+        if (string.IsNullOrEmpty(indicatorName))
+            return;
+            
+        if (checkBox.IsChecked == true)
+        {
+            AddIndicatorToChart(_selectedChart, indicatorName);
+        }
+        else
+        {
+            _selectedChart.RemoveIndicatorByName(indicatorName);
+        }
+    }
+
+    private void AddIndicatorToChart(ChartPanel chart, string indicatorName)
+    {
+        switch (indicatorName)
+        {
+            case "KeyLevels":
+                chart.AddIndicator(new sadnerd.io.ATAS.KeyLevels.KeyLevels());
+                break;
+            case "PvsraCandles":
+                chart.AddIndicator(new sadnerd.io.ATAS.PvsraCandles.PvsraCandles());
+                break;
+            case "EmaWithCloud":
+                chart.AddIndicator(new sadnerd.io.ATAS.EmaWithCloud.EmaWithCloud());
+                break;
+        }
+    }
+
+    private void ApplyToAllCharts_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedChart == null)
+            return;
+            
+        var indicators = _selectedChart.GetActiveIndicatorNames();
+        
+        foreach (var chart in _chartPanels)
+        {
+            if (chart == _selectedChart)
+                continue;
+                
+            // Clear and re-add indicators to match selected chart
+            chart.ClearIndicators();
+            foreach (var indicatorName in indicators)
+            {
+                AddIndicatorToChart(chart, indicatorName);
+            }
+        }
     }
 
     #endregion
