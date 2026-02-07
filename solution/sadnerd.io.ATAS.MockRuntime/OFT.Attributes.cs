@@ -13,3 +13,11 @@ public class HelpLinkAttribute : Attribute
         Url = url;
     }
 }
+
+/// <summary>
+/// Parameter attribute for indicator settings
+/// </summary>
+[AttributeUsage(AttributeTargets.Property)]
+public class ParameterAttribute : Attribute
+{
+}

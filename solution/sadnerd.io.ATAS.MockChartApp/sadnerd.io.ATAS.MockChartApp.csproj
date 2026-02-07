@@ -26,10 +26,8 @@
   <ItemGroup>
     <ProjectReference Include="..\sadnerd.io.ATAS.MockRuntime\sadnerd.io.ATAS.MockRuntime.csproj" />
     <ProjectReference Include="..\sadnerd.io.ATAS.KeyLevels\sadnerd.io.ATAS.KeyLevels.csproj" />
-    <!-- PvsraCandles and EmaWithCloud require additional MockRuntime types -->
-    <!-- Uncomment when Commit 4 adds the necessary mock implementations -->
-    <!-- <ProjectReference Include="..\sadnerd.io.ATAS.PvsraCandles\sadnerd.io.ATAS.PvsraCandles.csproj" /> -->
-    <!-- <ProjectReference Include="..\sadnerd.io.ATAS.EmaWithCloud\sadnerd.io.ATAS.EmaWithCloud.csproj" /> -->
+    <ProjectReference Include="..\sadnerd.io.ATAS.PvsraCandles\sadnerd.io.ATAS.PvsraCandles.csproj" />
+    <ProjectReference Include="..\sadnerd.io.ATAS.EmaWithCloud\sadnerd.io.ATAS.EmaWithCloud.csproj" />
   </ItemGroup>
 
   <ItemGroup>

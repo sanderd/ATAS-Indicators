@@ -349,13 +349,14 @@ public class ValueDataSeries : DataSeries
 }
 
 /// <summary>
-/// Range value for RangeDataSeries
+/// Range value for RangeDataSeries - class to allow property assignment through indexer
 /// </summary>
-public struct RangeValue
+public class RangeValue
 {
     public decimal Upper { get; set; }
     public decimal Lower { get; set; }
 
+    public RangeValue() { }
     public RangeValue(decimal upper, decimal lower)
     {
         Upper = upper;
@@ -381,7 +382,15 @@ public class RangeDataSeries : DataSeries
 
     public new RangeValue this[int index]
     {
-        get => _values.TryGetValue(index, out var val) ? val : new RangeValue();
+        get
+        {
+            if (!_values.TryGetValue(index, out var val))
+            {
+                val = new RangeValue();
+                _values[index] = val;
+            }
+            return val;
+        }
         set => _values[index] = value;
     }
 
