@@ -81,6 +81,7 @@ jobs:
         # Copy indicator DLLs
         $indicators = @(
             @{ Name = "EmaWithCloud"; Project = "sadnerd.io.ATAS.EmaWithCloud" },
+            @{ Name = "KeyLevels"; Project = "sadnerd.io.ATAS.KeyLevels" },
             @{ Name = "PvsraCandles"; Project = "sadnerd.io.ATAS.PvsraCandles" }
         )
         
@@ -106,6 +107,7 @@ jobs:
         ## Included Indicators
 
         - **EmaWithCloud**: EMA indicator with cloud visualization
+        - **KeyLevels**: Key price level visualization
         - **PvsraCandles**: PVSRA-style candle coloring
 
         ## Requirements
@@ -158,6 +160,7 @@ jobs:
         ## Included Indicators
 
         - **EmaWithCloud**: EMA indicator with cloud visualization between fast and slow EMAs
+        - **KeyLevels**: Key price level visualization with customizable styling
         - **PvsraCandles**: PVSRA-style candle coloring based on volume analysis
 
         ## Installation
