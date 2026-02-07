@@ -803,7 +803,9 @@ public partial class ChartPanel : UserControl
 
         int barStep = Math.Max(1, chartWidth / (_barWidth + _barSpacing) / 6);
         
-        for (int bar = _firstVisibleBar; bar <= _chartInfo.LastVisibleBarNumber && bar < _candles.Count; bar += barStep)
+        // Start from max of 0 or _firstVisibleBar to avoid negative index
+        int startBar = Math.Max(0, _firstVisibleBar);
+        for (int bar = startBar; bar <= _chartInfo.LastVisibleBarNumber && bar < _candles.Count; bar += barStep)
         {
             int x = _chartInfo.GetXByBar(bar);
             if (x >= LeftMargin && x <= LeftMargin + chartWidth)
