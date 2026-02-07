@@ -344,6 +344,10 @@ public partial class ChartPanel : UserControl
         using var renderContext = new RenderContext(canvas);
         foreach (var indicator in _activeIndicators)
         {
+            // Draw DataSeries (ValueDataSeries, RangeDataSeries)
+            DrawIndicatorDataSeries(canvas, indicator);
+            
+            // Draw custom rendering (OnRender override)
             indicator.Render(renderContext, DrawingLayouts.LatestBar);
         }
 
@@ -551,6 +555,149 @@ public partial class ChartPanel : UserControl
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// Draw all data series for an indicator
+    /// </summary>
+    private void DrawIndicatorDataSeries(SKCanvas canvas, Indicator indicator)
+    {
+        foreach (var dataSeries in indicator.DataSeries)
+        {
+            // Draw RangeDataSeries first (they go behind)
+            if (dataSeries is RangeDataSeries rds)
+            {
+                DrawRangeDataSeries(canvas, rds);
+            }
+        }
+
+        foreach (var dataSeries in indicator.DataSeries)
+        {
+            // Then draw ValueDataSeries (lines on top)
+            if (dataSeries is ValueDataSeries vds)
+            {
+                DrawValueDataSeries(canvas, vds);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Draw ValueDataSeries as a line plot
+    /// </summary>
+    private void DrawValueDataSeries(SKCanvas canvas, ValueDataSeries series)
+    {
+        if (series.IsHidden || series.VisualType == VisualMode.Hide)
+            return;
+
+        var color = new SKColor(series.Color.R, series.Color.G, series.Color.B, series.Color.A);
+        using var paint = new SKPaint
+        {
+            Color = color,
+            StrokeWidth = series.Width,
+            Style = SKPaintStyle.Stroke,
+            IsAntialias = true
+        };
+
+        var path = new SKPath();
+        bool started = false;
+
+        int startBar = Math.Max(0, _chartInfo.FirstVisibleBarNumber);
+        int endBar = Math.Min(_candles.Count - 1, _chartInfo.LastVisibleBarNumber);
+
+        for (int bar = startBar; bar <= endBar; bar++)
+        {
+            decimal value = series[bar];
+            
+            // Skip zero values if configured
+            if (!series.ShowZeroValue && value == 0)
+            {
+                started = false;
+                continue;
+            }
+
+            int x = _chartInfo.GetXByBar(bar);
+            int y = _chartInfo.GetYByPrice(value);
+
+            if (series.VisualType == VisualMode.Line)
+            {
+                if (!started)
+                {
+                    path.MoveTo(x, y);
+                    started = true;
+                }
+                else
+                {
+                    path.LineTo(x, y);
+                }
+            }
+            else if (series.VisualType == VisualMode.Dots)
+            {
+                canvas.DrawCircle(x, y, 2, paint);
+            }
+        }
+
+        if (series.VisualType == VisualMode.Line)
+        {
+            canvas.DrawPath(path, paint);
+        }
+    }
+
+    /// <summary>
+    /// Draw RangeDataSeries as a filled area between upper and lower bounds
+    /// </summary>
+    private void DrawRangeDataSeries(SKCanvas canvas, RangeDataSeries series)
+    {
+        if (series.IsHidden)
+            return;
+
+        var color = new SKColor(
+            series.RangeColor.R, 
+            series.RangeColor.G, 
+            series.RangeColor.B, 
+            series.RangeColor.A);
+
+        using var paint = new SKPaint
+        {
+            Color = color,
+            Style = SKPaintStyle.Fill,
+            IsAntialias = true
+        };
+
+        int startBar = Math.Max(0, _chartInfo.FirstVisibleBarNumber);
+        int endBar = Math.Min(_candles.Count - 1, _chartInfo.LastVisibleBarNumber);
+
+        // Build polygon path
+        var path = new SKPath();
+        var upperPoints = new List<SKPoint>();
+        var lowerPoints = new List<SKPoint>();
+
+        for (int bar = startBar; bar <= endBar; bar++)
+        {
+            var range = series[bar];
+            if (range.Upper == 0 && range.Lower == 0)
+                continue;
+
+            int x = _chartInfo.GetXByBar(bar);
+            int yUpper = _chartInfo.GetYByPrice(range.Upper);
+            int yLower = _chartInfo.GetYByPrice(range.Lower);
+
+            upperPoints.Add(new SKPoint(x, yUpper));
+            lowerPoints.Add(new SKPoint(x, yLower));
+        }
+
+        if (upperPoints.Count < 2)
+            return;
+
+        // Create polygon: upper points forward, then lower points backward
+        path.MoveTo(upperPoints[0]);
+        for (int i = 1; i < upperPoints.Count; i++)
+            path.LineTo(upperPoints[i]);
+        
+        for (int i = lowerPoints.Count - 1; i >= 0; i--)
+            path.LineTo(lowerPoints[i]);
+        
+        path.Close();
+        canvas.DrawPath(path, paint);
     }
 
     private void DrawPriceAxis(SKCanvas canvas, int width, int chartHeight)
