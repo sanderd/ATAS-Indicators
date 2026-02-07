@@ -118,6 +118,7 @@ public partial class ChartPanel : UserControl
         TimeframeCombo.SelectedIndex = 2; // Default to H1
 
         Loaded += ChartPanel_Loaded;
+        SizeChanged += (_, _) => Canvas.InvalidateVisual();
     }
 
     #endregion
@@ -217,6 +218,12 @@ public partial class ChartPanel : UserControl
             // Draw loading message
             using var paint = new SKPaint { Color = SKColors.White, TextSize = 14 };
             canvas.DrawText("Loading...", 50, 50, paint);
+            return;
+        }
+
+        // Skip render if dimensions are invalid (happens before layout pass)
+        if (info.Width < 100 || info.Height < 100)
+        {
             return;
         }
 
