@@ -19,6 +19,9 @@
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="Margin" Value="0,3"/>
         </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Margin" Value="0,3"/>
+        </Style>
     </Window.Resources>
     
     <Grid>
@@ -57,7 +60,7 @@
         
         <!-- Settings Panel (Right Side) -->
         <Border x:Name="SettingsPanel" Grid.Row="1" Grid.Column="1" 
-                Background="#2a2a4e" Width="220" Visibility="Collapsed">
+                Background="#2a2a4e" Width="280" Visibility="Collapsed">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="10">
                     <TextBlock Text="Chart Settings" FontWeight="Bold" Foreground="White" 
@@ -67,8 +70,25 @@
                     <TextBlock x:Name="SelectedChartLabel" Text="No chart selected" 
                                Foreground="#66BB6A" Margin="0,0,0,10"/>
                     
+                    <!-- Chart Data Settings -->
+                    <TextBlock Text="Data" Foreground="#aaa" Margin="0,10,0,5" FontWeight="SemiBold"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,3">
+                        <TextBlock Text="Load days:" Foreground="White" VerticalAlignment="Center" Width="80"/>
+                        <ComboBox x:Name="DaysCombo" Width="80" SelectionChanged="DaysCombo_SelectionChanged">
+                            <ComboBoxItem Content="1"/>
+                            <ComboBoxItem Content="3"/>
+                            <ComboBoxItem Content="5"/>
+                            <ComboBoxItem Content="10"/>
+                            <ComboBoxItem Content="20"/>
+                            <ComboBoxItem Content="30"/>
+                        </ComboBox>
+                    </StackPanel>
+                    
+                    <!-- Separator -->
+                    <Border Height="1" Background="#5a5a8c" Margin="0,10,0,10"/>
+                    
                     <!-- Active Indicators -->
-                    <TextBlock Text="Indicators" Foreground="#aaa" Margin="0,10,0,5" FontWeight="SemiBold"/>
+                    <TextBlock Text="Indicators" Foreground="#aaa" Margin="0,0,0,5" FontWeight="SemiBold"/>
                     <CheckBox x:Name="KeyLevelsCheck" Content="Key Levels" 
                               Click="IndicatorToggle_Click" Tag="KeyLevels"/>
                     <CheckBox x:Name="PvsraCandlesCheck" Content="PVSRA Candles" 
@@ -77,11 +97,14 @@
                               Click="IndicatorToggle_Click" Tag="EmaWithCloud"/>
                     
                     <!-- Separator -->
-                    <Border Height="1" Background="#5a5a8c" Margin="0,15,0,10"/>
+                    <Border Height="1" Background="#5a5a8c" Margin="0,10,0,10"/>
+                    
+                    <!-- Dynamic Indicator Properties Container -->
+                    <StackPanel x:Name="IndicatorPropertiesPanel"/>
                     
                     <!-- Apply to All button -->
                     <Button Content="Apply to All Charts" Click="ApplyToAllCharts_Click" 
-                            HorizontalAlignment="Stretch" Margin="0,5"/>
+                            HorizontalAlignment="Stretch" Margin="0,15,0,5"/>
                 </StackPanel>
             </ScrollViewer>
         </Border>

@@ -207,20 +207,30 @@ public partial class MultiChartWindow : Window
                 Margin = new Thickness(1)
             };
             
+            // Set days to load (do this before adding indicators so data is already loaded)
+            chart.DaysToLoad = config.DaysToLoad;
+            
             // Add indicators based on config
             foreach (var indicatorName in config.Indicators)
             {
-                if (indicatorName == "KeyLevels")
+                Indicator? indicator = indicatorName switch
                 {
-                    chart.AddIndicator(new sadnerd.io.ATAS.KeyLevels.KeyLevels());
-                }
-                else if (indicatorName == "PvsraCandles")
+                    "KeyLevels" => new sadnerd.io.ATAS.KeyLevels.KeyLevels(),
+                    "PvsraCandles" => new sadnerd.io.ATAS.PvsraCandles.PvsraCandles(),
+                    "EmaWithCloud" => new sadnerd.io.ATAS.EmaWithCloud.EmaWithCloud(),
+                    _ => null
+                };
+                
+                if (indicator != null)
                 {
-                    chart.AddIndicator(new sadnerd.io.ATAS.PvsraCandles.PvsraCandles());
-                }
-                else if (indicatorName == "EmaWithCloud")
-                {
-                    chart.AddIndicator(new sadnerd.io.ATAS.EmaWithCloud.EmaWithCloud());
+                    // Apply saved settings if available
+                    var savedSettings = config.IndicatorSettings.FirstOrDefault(s => s.Name == indicatorName);
+                    if (savedSettings != null)
+                    {
+                        ApplyIndicatorSettings(indicator, savedSettings);
+                    }
+                    
+                    chart.AddIndicator(indicator);
                 }
             }
             
@@ -253,11 +263,92 @@ public partial class MultiChartWindow : Window
             {
                 Symbol = chart.Symbol,
                 Timeframe = chart.Timeframe,
-                Indicators = chart.GetActiveIndicatorNames()
+                DaysToLoad = chart.DaysToLoad,
+                Indicators = chart.GetActiveIndicatorNames(),
+                IndicatorSettings = GetIndicatorSettings(chart)
             }).ToList()
         };
         
         ChartLayoutManager.SaveLayout(layout);
+    }
+
+    private List<IndicatorConfig> GetIndicatorSettings(ChartPanel chart)
+    {
+        var settings = new List<IndicatorConfig>();
+        
+        foreach (var indicator in chart.ActiveIndicators)
+        {
+            var config = new IndicatorConfig { Name = indicator.GetType().Name };
+            
+            // Get properties with Display attribute
+            var properties = indicator.GetType().GetProperties()
+                .Where(p => p.GetCustomAttributes(typeof(System.ComponentModel.DataAnnotations.DisplayAttribute), true).Any()
+                         && p.CanRead && p.CanWrite);
+                         
+            foreach (var prop in properties)
+            {
+                var value = prop.GetValue(indicator);
+                if (value != null)
+                {
+                    // Convert CrossColor to serializable format
+                    if (prop.PropertyType == typeof(CrossColor))
+                    {
+                        var color = (CrossColor)value;
+                        config.Settings[prop.Name] = $"#{color.A:X2}{color.R:X2}{color.G:X2}{color.B:X2}";
+                    }
+                    else
+                    {
+                        config.Settings[prop.Name] = value;
+                    }
+                }
+            }
+            
+            settings.Add(config);
+        }
+        
+        return settings;
+    }
+
+    private void ApplyIndicatorSettings(Indicator indicator, IndicatorConfig config)
+    {
+        foreach (var kvp in config.Settings)
+        {
+            var prop = indicator.GetType().GetProperty(kvp.Key);
+            if (prop == null || !prop.CanWrite || kvp.Value == null)
+                continue;
+                
+            try
+            {
+                if (prop.PropertyType == typeof(CrossColor) && kvp.Value is string colorStr)
+                {
+                    // Parse color from #AARRGGBB format
+                    if (colorStr.StartsWith("#") && colorStr.Length == 9)
+                    {
+                        byte a = Convert.ToByte(colorStr.Substring(1, 2), 16);
+                        byte r = Convert.ToByte(colorStr.Substring(3, 2), 16);
+                        byte g = Convert.ToByte(colorStr.Substring(5, 2), 16);
+                        byte b = Convert.ToByte(colorStr.Substring(7, 2), 16);
+                        prop.SetValue(indicator, CrossColor.FromArgb(a, r, g, b));
+                    }
+                }
+                else if (prop.PropertyType == typeof(bool))
+                {
+                    prop.SetValue(indicator, Convert.ToBoolean(kvp.Value));
+                }
+                else if (prop.PropertyType == typeof(int))
+                {
+                    prop.SetValue(indicator, Convert.ToInt32(kvp.Value));
+                }
+                else if (prop.PropertyType == typeof(decimal))
+                {
+                    prop.SetValue(indicator, Convert.ToDecimal(kvp.Value));
+                }
+            }
+            catch
+            {
+                // Ignore conversion errors
+            }
+        }
     }
 
     #endregion
@@ -284,15 +375,32 @@ public partial class MultiChartWindow : Window
             KeyLevelsCheck.IsChecked = false;
             PvsraCandlesCheck.IsChecked = false;
             EmaCloudCheck.IsChecked = false;
+            IndicatorPropertiesPanel.Children.Clear();
             return;
         }
         
         SelectedChartLabel.Text = $"Selected: {_selectedChart.Symbol} {_selectedChart.Timeframe.ToDisplayString()}";
         
+        // Set days combo
+        var days = _selectedChart.DaysToLoad;
+        for (int i = 0; i < DaysCombo.Items.Count; i++)
+        {
+            if (DaysCombo.Items[i] is ComboBoxItem item && 
+                int.TryParse(item.Content?.ToString(), out int itemDays) && 
+                itemDays == days)
+            {
+                DaysCombo.SelectedIndex = i;
+                break;
+            }
+        }
+        
         var indicators = _selectedChart.GetActiveIndicatorNames();
         KeyLevelsCheck.IsChecked = indicators.Contains("KeyLevels");
         PvsraCandlesCheck.IsChecked = indicators.Contains("PvsraCandles");
         EmaCloudCheck.IsChecked = indicators.Contains("EmaWithCloud");
+        
+        // Generate dynamic indicator property UI
+        GenerateIndicatorPropertiesUI();
     }
 
     private void IndicatorToggle_Click(object sender, RoutedEventArgs e)
@@ -312,6 +420,9 @@ public partial class MultiChartWindow : Window
         {
             _selectedChart.RemoveIndicatorByName(indicatorName);
         }
+        
+        // Regenerate property UI after indicator change
+        GenerateIndicatorPropertiesUI();
     }
 
     private void AddIndicatorToChart(ChartPanel chart, string indicatorName)
@@ -347,6 +458,137 @@ public partial class MultiChartWindow : Window
             foreach (var indicatorName in indicators)
             {
                 AddIndicatorToChart(chart, indicatorName);
+            }
+            
+            // Copy days setting
+            chart.DaysToLoad = _selectedChart.DaysToLoad;
+        }
+    }
+
+    private void DaysCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_selectedChart == null || DaysCombo.SelectedItem is not ComboBoxItem item)
+            return;
+            
+        if (int.TryParse(item.Content?.ToString(), out int days))
+        {
+            _selectedChart.DaysToLoad = days;
+        }
+    }
+
+    private void GenerateIndicatorPropertiesUI()
+    {
+        IndicatorPropertiesPanel.Children.Clear();
+        
+        if (_selectedChart == null)
+            return;
+            
+        foreach (var indicator in _selectedChart.ActiveIndicators)
+        {
+            var indicatorName = indicator.GetType().Name;
+            
+            // Add indicator header
+            var header = new TextBlock
+            {
+                Text = indicatorName,
+                Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(102, 187, 106)),
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 10, 0, 5)
+            };
+            IndicatorPropertiesPanel.Children.Add(header);
+            
+            // Find properties with Display attribute
+            var properties = indicator.GetType().GetProperties()
+                .Where(p => p.GetCustomAttributes(typeof(System.ComponentModel.DataAnnotations.DisplayAttribute), true).Any()
+                         && p.CanRead && p.CanWrite)
+                .ToList();
+                
+            foreach (var prop in properties)
+            {
+                var displayAttr = prop.GetCustomAttributes(typeof(System.ComponentModel.DataAnnotations.DisplayAttribute), true)
+                    .FirstOrDefault() as System.ComponentModel.DataAnnotations.DisplayAttribute;
+                    
+                var displayName = displayAttr?.Name ?? prop.Name;
+                var propValue = prop.GetValue(indicator);
+                
+                // Create property row based on type
+                var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 2) };
+                row.Children.Add(new TextBlock 
+                { 
+                    Text = displayName, 
+                    Foreground = System.Windows.Media.Brushes.White, 
+                    Width = 140,
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+                
+                if (prop.PropertyType == typeof(bool))
+                {
+                    var checkBox = new CheckBox { IsChecked = (bool?)propValue ?? false, Tag = (indicator, prop) };
+                    checkBox.Click += PropertyCheckBox_Click;
+                    row.Children.Add(checkBox);
+                }
+                else if (prop.PropertyType == typeof(int))
+                {
+                    var textBox = new TextBox { Text = propValue?.ToString() ?? "0", Width = 60, Tag = (indicator, prop) };
+                    textBox.LostFocus += PropertyIntTextBox_LostFocus;
+                    row.Children.Add(textBox);
+                }
+                else if (prop.PropertyType == typeof(decimal))
+                {
+                    var textBox = new TextBox { Text = propValue?.ToString() ?? "0", Width = 80, Tag = (indicator, prop) };
+                    textBox.LostFocus += PropertyDecimalTextBox_LostFocus;
+                    row.Children.Add(textBox);
+                }
+                else if (prop.PropertyType == typeof(CrossColor))
+                {
+                    var colorValue = propValue as CrossColor? ?? CrossColors.White;
+                    var colorBtn = new Button 
+                    { 
+                        Width = 60, 
+                        Height = 20,
+                        Background = new System.Windows.Media.SolidColorBrush(
+                            System.Windows.Media.Color.FromArgb(colorValue.A, colorValue.R, colorValue.G, colorValue.B)),
+                        Tag = (indicator, prop),
+                        Content = ""
+                    };
+                    // Color picker would require more complex implementation, skip for now
+                    row.Children.Add(colorBtn);
+                }
+                
+                IndicatorPropertiesPanel.Children.Add(row);
+            }
+        }
+    }
+
+    private void PropertyCheckBox_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox cb && cb.Tag is (Indicator indicator, System.Reflection.PropertyInfo prop))
+        {
+            prop.SetValue(indicator, cb.IsChecked ?? false);
+            _selectedChart?.Refresh();
+        }
+    }
+
+    private void PropertyIntTextBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox tb && tb.Tag is (Indicator indicator, System.Reflection.PropertyInfo prop))
+        {
+            if (int.TryParse(tb.Text, out int value))
+            {
+                prop.SetValue(indicator, value);
+                _selectedChart?.Refresh();
+            }
+        }
+    }
+
+    private void PropertyDecimalTextBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox tb && tb.Tag is (Indicator indicator, System.Reflection.PropertyInfo prop))
+        {
+            if (decimal.TryParse(tb.Text, out decimal value))
+            {
+                prop.SetValue(indicator, value);
+                _selectedChart?.Refresh();
             }
         }
     }

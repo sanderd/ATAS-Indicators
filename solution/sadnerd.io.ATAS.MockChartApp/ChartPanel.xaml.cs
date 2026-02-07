@@ -99,6 +99,25 @@ public partial class ChartPanel : UserControl
     /// </summary>
     public event EventHandler? OnChartClicked;
 
+    private int _daysToLoad = 5;
+    public int DaysToLoad
+    {
+        get => _daysToLoad;
+        set
+        {
+            if (_daysToLoad != value && value > 0)
+            {
+                _daysToLoad = value;
+                LoadData();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Get list of active indicators for settings UI
+    /// </summary>
+    public IReadOnlyList<Indicator> ActiveIndicators => _activeIndicators.AsReadOnly();
+
     #endregion
 
     #region Constructor
@@ -134,7 +153,21 @@ public partial class ChartPanel : UserControl
 
     public void LoadData()
     {
-        _candles = TimeframeAggregator.GetRecentBars(_timeframe, 500);
+        // Calculate bar count from days to load and timeframe
+        int barsPerDay = _timeframe switch
+        {
+            Timeframe.M1 => 24 * 60,
+            Timeframe.M5 => 24 * 12,
+            Timeframe.M15 => 24 * 4,
+            Timeframe.M30 => 24 * 2,
+            Timeframe.H1 => 24,
+            Timeframe.H4 => 6,
+            Timeframe.Daily => 1,
+            _ => 24
+        };
+        int barCount = Math.Max(100, _daysToLoad * barsPerDay);
+        
+        _candles = TimeframeAggregator.GetRecentBars(_timeframe, barCount);
         _chartInfo = new ChartInfo(_candles)
         {
             BarWidth = _barWidth,
@@ -228,6 +261,14 @@ public partial class ChartPanel : UserControl
     private void ChartPanel_Loaded(object sender, RoutedEventArgs e)
     {
         SymbolLabel.Text = Symbol;
+        
+        // Sync timeframe dropdown to actual timeframe
+        var tfIndex = Array.IndexOf(TimeframeExtensions.CommonTimeframes, _timeframe);
+        if (tfIndex >= 0)
+        {
+            TimeframeCombo.SelectedIndex = tfIndex;
+        }
+        
         LoadData();
     }
 

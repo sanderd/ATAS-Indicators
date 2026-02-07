@@ -5,13 +5,24 @@ using ATAS.Indicators;
 namespace sadnerd.io.ATAS.MockChartApp;
 
 /// <summary>
+/// Configuration for indicator settings
+/// </summary>
+public class IndicatorConfig
+{
+    public string Name { get; set; } = "";
+    public Dictionary<string, object?> Settings { get; set; } = new();
+}
+
+/// <summary>
 /// Configuration for a single chart
 /// </summary>
 public class ChartConfig
 {
     public string Symbol { get; set; } = "ES";
     public Timeframe Timeframe { get; set; } = Timeframe.H1;
+    public int DaysToLoad { get; set; } = 5;
     public List<string> Indicators { get; set; } = new() { "KeyLevels" };
+    public List<IndicatorConfig> IndicatorSettings { get; set; } = new();
 }
 
 /// <summary>
