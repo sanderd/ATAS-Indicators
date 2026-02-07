@@ -257,6 +257,7 @@ public class DataSeries
 {
     private readonly Dictionary<int, decimal> _values = new();
     public bool IsHidden { get; set; }
+    public string Name { get; set; } = "";
 
     public decimal this[int index]
     {
@@ -265,6 +266,123 @@ public class DataSeries
     }
 
     public void Clear() => _values.Clear();
+}
+
+/// <summary>
+/// Visual modes for ValueDataSeries
+/// </summary>
+public enum VisualMode
+{
+    Hide,
+    Line,
+    Histogram,
+    Dots,
+    Block,
+    UpDownBlock,
+    Hash,
+    Square,
+    Cross,
+    Triangle,
+    OnlyValueOnAxis
+}
+
+/// <summary>
+/// Value data series for line/histogram plots
+/// </summary>
+public class ValueDataSeries : DataSeries
+{
+    private readonly Dictionary<int, decimal> _values = new();
+    
+    public CrossColor Color { get; set; } = CrossColors.Blue;
+    public VisualMode VisualType { get; set; } = VisualMode.Line;
+    public bool DrawAbovePrice { get; set; }
+    public bool ShowCurrentValue { get; set; }
+    public bool ShowZeroValue { get; set; } = true;
+    public bool ShowTooltip { get; set; } = true;
+    public int Width { get; set; } = 1;
+    public int LineDashStyle { get; set; } = 0;
+    
+    public ValueDataSeries(string id, string name)
+    {
+        Name = name;
+    }
+
+    public new decimal this[int index]
+    {
+        get => _values.TryGetValue(index, out var val) ? val : 0;
+        set => _values[index] = value;
+    }
+
+    public new void Clear() => _values.Clear();
+    
+    public IEnumerable<int> GetBars() => _values.Keys;
+}
+
+/// <summary>
+/// Range value for RangeDataSeries
+/// </summary>
+public struct RangeValue
+{
+    public decimal Upper { get; set; }
+    public decimal Lower { get; set; }
+
+    public RangeValue(decimal upper, decimal lower)
+    {
+        Upper = upper;
+        Lower = lower;
+    }
+}
+
+/// <summary>
+/// Range data series for cloud/band plots
+/// </summary>
+public class RangeDataSeries : DataSeries
+{
+    private readonly Dictionary<int, RangeValue> _values = new();
+    
+    public CrossColor RangeColor { get; set; } = CrossColor.FromArgb(50, 0, 0, 255);
+    public string DescriptionKey { get; set; } = "";
+    public bool DrawAbovePrice { get; set; }
+    
+    public RangeDataSeries(string id, string name)
+    {
+        Name = name;
+    }
+
+    public new RangeValue this[int index]
+    {
+        get => _values.TryGetValue(index, out var val) ? val : new RangeValue();
+        set => _values[index] = value;
+    }
+
+    public new void Clear() => _values.Clear();
+    
+    public IEnumerable<int> GetBars() => _values.Keys;
+}
+
+/// <summary>
+/// Paintbars data series for candle color overrides
+/// </summary>
+public class PaintbarsDataSeries : DataSeries
+{
+    private readonly Dictionary<int, CrossColor> _colors = new();
+    
+    public PaintbarsDataSeries(string id, string name)
+    {
+        Name = name;
+    }
+
+    public new CrossColor this[int index]
+    {
+        get => _colors.TryGetValue(index, out var color) ? color : CrossColors.Transparent;
+        set => _colors[index] = value;
+    }
+
+    public new void Clear() => _colors.Clear();
+    
+    public bool HasColor(int bar) => _colors.ContainsKey(bar);
+    
+    public IEnumerable<int> GetBars() => _colors.Keys;
 }
 
 /// <summary>

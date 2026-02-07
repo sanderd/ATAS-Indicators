@@ -352,6 +352,166 @@ public partial class MainWindow : Window
         PriceRangeLabel.Content = $"{_chartInfo.PriceMin:F2} - {_chartInfo.PriceMax:F2}";
     }
 
+    /// <summary>
+    /// Gets candle color override from PaintbarsDataSeries if available
+    /// </summary>
+    private CrossColor? GetCandleColorOverride(int bar, Indicator indicator)
+    {
+        foreach (var dataSeries in indicator.DataSeries)
+        {
+            if (dataSeries is PaintbarsDataSeries paintbars && paintbars.HasColor(bar))
+            {
+                var color = paintbars[bar];
+                if (color.A > 0) // Not transparent
+                    return color;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Draw ValueDataSeries as a line plot
+    /// </summary>
+    private void DrawValueDataSeries(SKCanvas canvas, ValueDataSeries series, ChartInfo chartInfo)
+    {
+        if (series.IsHidden || series.VisualType == VisualMode.Hide)
+            return;
+
+        var color = new SKColor(series.Color.R, series.Color.G, series.Color.B, series.Color.A);
+        using var paint = new SKPaint
+        {
+            Color = color,
+            StrokeWidth = series.Width,
+            Style = SKPaintStyle.Stroke,
+            IsAntialias = true
+        };
+
+        var path = new SKPath();
+        bool started = false;
+
+        int startBar = Math.Max(0, chartInfo.FirstVisibleBarNumber);
+        int endBar = Math.Min(_candles.Count - 1, chartInfo.LastVisibleBarNumber);
+
+        for (int bar = startBar; bar <= endBar; bar++)
+        {
+            decimal value = series[bar];
+            
+            // Skip zero values if configured
+            if (!series.ShowZeroValue && value == 0)
+            {
+                started = false;
+                continue;
+            }
+
+            int x = chartInfo.GetXByBar(bar);
+            int y = chartInfo.GetYByPrice(value);
+
+            if (series.VisualType == VisualMode.Line)
+            {
+                if (!started)
+                {
+                    path.MoveTo(x, y);
+                    started = true;
+                }
+                else
+                {
+                    path.LineTo(x, y);
+                }
+            }
+            else if (series.VisualType == VisualMode.Dots)
+            {
+                canvas.DrawCircle(x, y, 2, paint);
+            }
+        }
+
+        if (series.VisualType == VisualMode.Line)
+        {
+            canvas.DrawPath(path, paint);
+        }
+    }
+
+    /// <summary>
+    /// Draw RangeDataSeries as a filled area between upper and lower bounds
+    /// </summary>
+    private void DrawRangeDataSeries(SKCanvas canvas, RangeDataSeries series, ChartInfo chartInfo)
+    {
+        if (series.IsHidden)
+            return;
+
+        var color = new SKColor(
+            series.RangeColor.R, 
+            series.RangeColor.G, 
+            series.RangeColor.B, 
+            series.RangeColor.A);
+
+        using var paint = new SKPaint
+        {
+            Color = color,
+            Style = SKPaintStyle.Fill,
+            IsAntialias = true
+        };
+
+        int startBar = Math.Max(0, chartInfo.FirstVisibleBarNumber);
+        int endBar = Math.Min(_candles.Count - 1, chartInfo.LastVisibleBarNumber);
+
+        // Build polygon path
+        var path = new SKPath();
+        var upperPoints = new List<SKPoint>();
+        var lowerPoints = new List<SKPoint>();
+
+        for (int bar = startBar; bar <= endBar; bar++)
+        {
+            var range = series[bar];
+            if (range.Upper == 0 && range.Lower == 0)
+                continue;
+
+            int x = chartInfo.GetXByBar(bar);
+            int yUpper = chartInfo.GetYByPrice(range.Upper);
+            int yLower = chartInfo.GetYByPrice(range.Lower);
+
+            upperPoints.Add(new SKPoint(x, yUpper));
+            lowerPoints.Add(new SKPoint(x, yLower));
+        }
+
+        if (upperPoints.Count < 2)
+            return;
+
+        // Create polygon: upper points forward, then lower points backward
+        path.MoveTo(upperPoints[0]);
+        for (int i = 1; i < upperPoints.Count; i++)
+            path.LineTo(upperPoints[i]);
+        
+        for (int i = lowerPoints.Count - 1; i >= 0; i--)
+            path.LineTo(lowerPoints[i]);
+        
+        path.Close();
+        canvas.DrawPath(path, paint);
+    }
+
+    /// <summary>
+    /// Draw all data series for an indicator
+    /// </summary>
+    private void DrawIndicatorDataSeries(SKCanvas canvas, Indicator indicator, ChartInfo chartInfo)
+    {
+        foreach (var dataSeries in indicator.DataSeries)
+        {
+            // Draw RangeDataSeries first (they go behind)
+            if (dataSeries is RangeDataSeries rds)
+            {
+                DrawRangeDataSeries(canvas, rds, chartInfo);
+            }
+        }
+
+        foreach (var dataSeries in indicator.DataSeries)
+        {
+            // Then draw ValueDataSeries (lines on top)
+            if (dataSeries is ValueDataSeries vds)
+            {
+                DrawValueDataSeries(canvas, vds, chartInfo);
+            }
+        }
+    }
+
     #endregion
 
     #region Event Handlers - Controls
