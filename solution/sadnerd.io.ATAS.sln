@@ -15,44 +15,44 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "sadnerd.io.ATAS.MockChartAp
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		Debug|Any CPU = Debug|Any CPU
 		Debug_Mock|Any CPU = Debug_Mock|Any CPU
-		Release|Any CPU = Release|Any CPU
+		Debug|Any CPU = Debug|Any CPU
 		Release_Mock|Any CPU = Release_Mock|Any CPU
+		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2AADA7DF-A936-4DF4-B298-551FD8594BB7}.Debug_Mock|Any CPU.ActiveCfg = Debug_Mock|Any CPU
 		{2AADA7DF-A936-4DF4-B298-551FD8594BB7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{2AADA7DF-A936-4DF4-B298-551FD8594BB7}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{2AADA7DF-A936-4DF4-B298-551FD8594BB7}.Debug_Mock|Any CPU.ActiveCfg = Debug|Any CPU
+		{2AADA7DF-A936-4DF4-B298-551FD8594BB7}.Release_Mock|Any CPU.ActiveCfg = Release|Any CPU
 		{2AADA7DF-A936-4DF4-B298-551FD8594BB7}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2AADA7DF-A936-4DF4-B298-551FD8594BB7}.Release|Any CPU.Build.0 = Release|Any CPU
-		{2AADA7DF-A936-4DF4-B298-551FD8594BB7}.Release_Mock|Any CPU.ActiveCfg = Release|Any CPU
+		{8D18EC76-B229-4837-9F2A-F2B2029797EA}.Debug_Mock|Any CPU.ActiveCfg = Debug_Mock|Any CPU
 		{8D18EC76-B229-4837-9F2A-F2B2029797EA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{8D18EC76-B229-4837-9F2A-F2B2029797EA}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{8D18EC76-B229-4837-9F2A-F2B2029797EA}.Debug_Mock|Any CPU.ActiveCfg = Debug|Any CPU
+		{8D18EC76-B229-4837-9F2A-F2B2029797EA}.Release_Mock|Any CPU.ActiveCfg = Release|Any CPU
 		{8D18EC76-B229-4837-9F2A-F2B2029797EA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8D18EC76-B229-4837-9F2A-F2B2029797EA}.Release|Any CPU.Build.0 = Release|Any CPU
-		{8D18EC76-B229-4837-9F2A-F2B2029797EA}.Release_Mock|Any CPU.ActiveCfg = Release|Any CPU
-		{3A5B7C8D-9E0F-4A1B-8C2D-6E7F8A9B0C1D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{3A5B7C8D-9E0F-4A1B-8C2D-6E7F8A9B0C1D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3A5B7C8D-9E0F-4A1B-8C2D-6E7F8A9B0C1D}.Debug_Mock|Any CPU.ActiveCfg = Debug_Mock|Any CPU
 		{3A5B7C8D-9E0F-4A1B-8C2D-6E7F8A9B0C1D}.Debug_Mock|Any CPU.Build.0 = Debug_Mock|Any CPU
-		{3A5B7C8D-9E0F-4A1B-8C2D-6E7F8A9B0C1D}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{3A5B7C8D-9E0F-4A1B-8C2D-6E7F8A9B0C1D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3A5B7C8D-9E0F-4A1B-8C2D-6E7F8A9B0C1D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3A5B7C8D-9E0F-4A1B-8C2D-6E7F8A9B0C1D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3A5B7C8D-9E0F-4A1B-8C2D-6E7F8A9B0C1D}.Release_Mock|Any CPU.ActiveCfg = Release_Mock|Any CPU
 		{3A5B7C8D-9E0F-4A1B-8C2D-6E7F8A9B0C1D}.Release_Mock|Any CPU.Build.0 = Release_Mock|Any CPU
-		{B1C2D3E4-F5A6-47B8-9C0D-1E2F3A4B5C6D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3A5B7C8D-9E0F-4A1B-8C2D-6E7F8A9B0C1D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3A5B7C8D-9E0F-4A1B-8C2D-6E7F8A9B0C1D}.Release|Any CPU.Build.0 = Release|Any CPU
 		{B1C2D3E4-F5A6-47B8-9C0D-1E2F3A4B5C6D}.Debug_Mock|Any CPU.ActiveCfg = Debug|Any CPU
 		{B1C2D3E4-F5A6-47B8-9C0D-1E2F3A4B5C6D}.Debug_Mock|Any CPU.Build.0 = Debug|Any CPU
-		{B1C2D3E4-F5A6-47B8-9C0D-1E2F3A4B5C6D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B1C2D3E4-F5A6-47B8-9C0D-1E2F3A4B5C6D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{B1C2D3E4-F5A6-47B8-9C0D-1E2F3A4B5C6D}.Release_Mock|Any CPU.ActiveCfg = Release|Any CPU
 		{B1C2D3E4-F5A6-47B8-9C0D-1E2F3A4B5C6D}.Release_Mock|Any CPU.Build.0 = Release|Any CPU
-		{C2D3E4F5-A6B7-48C9-0D1E-2F3A4B5C6D7E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B1C2D3E4-F5A6-47B8-9C0D-1E2F3A4B5C6D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C2D3E4F5-A6B7-48C9-0D1E-2F3A4B5C6D7E}.Debug_Mock|Any CPU.ActiveCfg = Debug_Mock|Any CPU
 		{C2D3E4F5-A6B7-48C9-0D1E-2F3A4B5C6D7E}.Debug_Mock|Any CPU.Build.0 = Debug_Mock|Any CPU
-		{C2D3E4F5-A6B7-48C9-0D1E-2F3A4B5C6D7E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C2D3E4F5-A6B7-48C9-0D1E-2F3A4B5C6D7E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{C2D3E4F5-A6B7-48C9-0D1E-2F3A4B5C6D7E}.Release_Mock|Any CPU.ActiveCfg = Release_Mock|Any CPU
 		{C2D3E4F5-A6B7-48C9-0D1E-2F3A4B5C6D7E}.Release_Mock|Any CPU.Build.0 = Release_Mock|Any CPU
+		{C2D3E4F5-A6B7-48C9-0D1E-2F3A4B5C6D7E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -61,4 +61,3 @@ Global
 		SolutionGuid = {F2131773-97E3-44DE-8985-BF05D71AFF27}
 	EndGlobalSection
 EndGlobal
-

@@ -692,6 +692,36 @@ public partial class MainWindow : Window
         ChartCanvas.InvalidateVisual();
     }
 
+    private void IndicatorToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.CheckBox checkBox)
+            return;
+
+        var indicatorName = checkBox.Tag?.ToString();
+        if (string.IsNullOrEmpty(indicatorName))
+            return;
+
+        if (checkBox.IsChecked == true)
+        {
+            AddIndicator(indicatorName);
+        }
+        else
+        {
+            if (AvailableIndicatorTypes.TryGetValue(indicatorName, out var indicatorType))
+            {
+                RemoveIndicator(indicatorType);
+            }
+        }
+        
+        ChartCanvas.InvalidateVisual();
+    }
+
+    private void OpenMultiChart_Click(object sender, RoutedEventArgs e)
+    {
+        var multiChartWindow = new MultiChartWindow();
+        multiChartWindow.Show();
+    }
+
     #endregion
 
     #region Event Handlers - Mouse Interaction

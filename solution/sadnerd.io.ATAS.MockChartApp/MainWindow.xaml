@@ -82,6 +82,19 @@
                     <TextBlock Text="Indicator Settings" FontWeight="Bold" Foreground="White" 
                                FontSize="14" Margin="0,0,0,10"/>
                     
+                    <!-- Multi-Chart Mode -->
+                    <Button x:Name="MultiChartBtn" Content="📊 Open Multi-Chart" Click="OpenMultiChart_Click" 
+                            Margin="0,0,0,10" HorizontalAlignment="Stretch"/>
+                    
+                    <!-- Active Indicators -->
+                    <TextBlock Text="Active Indicators" Foreground="#66BB6A" Margin="0,5,0,5"/>
+                    <CheckBox x:Name="KeyLevelsCheck" Content="Key Levels" IsChecked="True" 
+                              Click="IndicatorToggle_Click" Tag="Key Levels"/>
+                    <CheckBox x:Name="PvsraCandlesCheck" Content="PVSRA Candles" IsChecked="False" 
+                              Click="IndicatorToggle_Click" Tag="PVSRA Candles"/>
+                    <CheckBox x:Name="EmaCloudCheck" Content="EMA with Cloud" IsChecked="False" 
+                              Click="IndicatorToggle_Click" Tag="EMA with Cloud"/>
+                    
                     <!-- Drawing Settings -->
                     <TextBlock Text="Drawing" Foreground="#aaa" Margin="0,5,0,5"/>
                     
