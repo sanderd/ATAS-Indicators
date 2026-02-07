@@ -1,0 +1,18 @@
+﻿  Determining projects to restore...
+  All projects are up-to-date for restore.
+  sadnerd.io.ATAS.MockRuntime -> E:\Projects\sadnerd.io.indicators-github\solution\sadnerd.io.ATAS.MockRuntime\bin\Debug_Mock\net8.0-windows\sadnerd.io.ATAS.MockRuntime.dll
+E:\Projects\sadnerd.io.indicators-github\solution\sadnerd.io.ATAS.PvsraCandles\PvsraCandles.cs(35,64): error CS0029: Cannot implicitly convert type 'System.Windows.Media.Color' to 'System.Drawing.Color' [E:\Projects\sadnerd.io.indicators-github\solution\sadnerd.io.ATAS.PvsraCandles\sadnerd.io.ATAS.PvsraCandles.csproj]
+E:\Projects\sadnerd.io.indicators-github\solution\sadnerd.io.ATAS.PvsraCandles\PvsraCandles.cs(138,13): error CS0103: The name 'Clear' does not exist in the current context [E:\Projects\sadnerd.io.indicators-github\solution\sadnerd.io.ATAS.PvsraCandles\sadnerd.io.ATAS.PvsraCandles.csproj]
+E:\Projects\sadnerd.io.indicators-github\solution\sadnerd.io.ATAS.PvsraCandles\PvsraCandles.cs(164,86): error CS1061: 'Color' does not contain a definition for 'Convert' and no accessible extension method 'Convert' accepting a first argument of type 'Color' could be found (are you missing a using directive or an assembly reference?) [E:\Projects\sadnerd.io.indicators-github\solution\sadnerd.io.ATAS.PvsraCandles\sadnerd.io.ATAS.PvsraCandles.csproj]
+E:\Projects\sadnerd.io.indicators-github\solution\sadnerd.io.ATAS.PvsraCandles\PvsraCandles.cs(164,25): error CS1061: 'RenderContext' does not contain a definition for 'DrawFillRectangle' and no accessible extension method 'DrawFillRectangle' accepting a first argument of type 'RenderContext' could be found (are you missing a using directive or an assembly reference?) [E:\Projects\sadnerd.io.indicators-github\solution\sadnerd.io.ATAS.PvsraCandles\sadnerd.io.ATAS.PvsraCandles.csproj]
+
+Build FAILED.
+
+E:\Projects\sadnerd.io.indicators-github\solution\sadnerd.io.ATAS.PvsraCandles\PvsraCandles.cs(35,64): error CS0029: Cannot implicitly convert type 'System.Windows.Media.Color' to 'System.Drawing.Color' [E:\Projects\sadnerd.io.indicators-github\solution\sadnerd.io.ATAS.PvsraCandles\sadnerd.io.ATAS.PvsraCandles.csproj]
+E:\Projects\sadnerd.io.indicators-github\solution\sadnerd.io.ATAS.PvsraCandles\PvsraCandles.cs(138,13): error CS0103: The name 'Clear' does not exist in the current context [E:\Projects\sadnerd.io.indicators-github\solution\sadnerd.io.ATAS.PvsraCandles\sadnerd.io.ATAS.PvsraCandles.csproj]
+E:\Projects\sadnerd.io.indicators-github\solution\sadnerd.io.ATAS.PvsraCandles\PvsraCandles.cs(164,86): error CS1061: 'Color' does not contain a definition for 'Convert' and no accessible extension method 'Convert' accepting a first argument of type 'Color' could be found (are you missing a using directive or an assembly reference?) [E:\Projects\sadnerd.io.indicators-github\solution\sadnerd.io.ATAS.PvsraCandles\sadnerd.io.ATAS.PvsraCandles.csproj]
+E:\Projects\sadnerd.io.indicators-github\solution\sadnerd.io.ATAS.PvsraCandles\PvsraCandles.cs(164,25): error CS1061: 'RenderContext' does not contain a definition for 'DrawFillRectangle' and no accessible extension method 'DrawFillRectangle' accepting a first argument of type 'RenderContext' could be found (are you missing a using directive or an assembly reference?) [E:\Projects\sadnerd.io.indicators-github\solution\sadnerd.io.ATAS.PvsraCandles\sadnerd.io.ATAS.PvsraCandles.csproj]
+    0 Warning(s)
+    4 Error(s)
+
+Time Elapsed 00:00:01.77

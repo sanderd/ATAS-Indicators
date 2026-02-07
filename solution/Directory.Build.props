@@ -6,4 +6,9 @@
     <!-- Suppress analyzer warnings when using reference assemblies -->
     <NoWarn Condition="'$(AtasAvailable)' == 'false'">$(NoWarn);AD0001</NoWarn>
   </PropertyGroup>
+
+  <!-- Set UseMockRuntime=true when building with Debug_Mock or Release_Mock configuration -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug_Mock' Or '$(Configuration)' == 'Release_Mock'">
+    <UseMockRuntime>true</UseMockRuntime>
+  </PropertyGroup>
 </Project>
