@@ -695,7 +695,9 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
             if (_previousDay.IsValid)
             {
-                ContributePeriod(_previousDay, PeriodType.Daily, false, _previousDay.StartTime, _lastDayStart);
+                // Use actual previous day start, not data start time
+                var prevDayStart = _lastDayStart.AddDays(-1);
+                ContributePeriod(_previousDay, PeriodType.Daily, false, prevDayStart, _lastDayStart);
             }
 
             // Contribute 4H data
@@ -705,7 +707,8 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
             if (_previous4h.IsValid)
             {
-                ContributePeriod(_previous4h, PeriodType.FourHour, false, _previous4h.StartTime, _last4hPeriodStart);
+                var prev4hStart = _last4hPeriodStart.AddHours(-4);
+                ContributePeriod(_previous4h, PeriodType.FourHour, false, prev4hStart, _last4hPeriodStart);
             }
 
             // Contribute Weekly data
@@ -715,7 +718,8 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
             if (_previousWeek.IsValid)
             {
-                ContributePeriod(_previousWeek, PeriodType.Weekly, false, _previousWeek.StartTime, _lastWeekStart);
+                var prevWeekStart = _lastWeekStart.AddDays(-7);
+                ContributePeriod(_previousWeek, PeriodType.Weekly, false, prevWeekStart, _lastWeekStart);
             }
 
             // Contribute Monday data
@@ -725,7 +729,8 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
             if (_previousMonday.IsValid)
             {
-                ContributePeriod(_previousMonday, PeriodType.Monday, false, _previousMonday.StartTime, _lastMondayStart);
+                var prevMondayStart = _lastMondayStart.AddDays(-7);
+                ContributePeriod(_previousMonday, PeriodType.Monday, false, prevMondayStart, prevMondayStart.AddDays(1));
             }
 
             // Contribute Monthly data
@@ -736,8 +741,9 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
             if (_previousMonth.IsValid)
             {
-                var prevMonthStart = _previousMonth.StartTime;
+                // Calculate actual previous month calendar boundaries (not data boundaries)
                 var currentMonthStart = new DateTime(_lastMonthYear, _lastMonth, 1);
+                var prevMonthStart = currentMonthStart.AddMonths(-1);
                 ContributePeriod(_previousMonth, PeriodType.Monthly, false, prevMonthStart, currentMonthStart);
             }
 
@@ -749,8 +755,9 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
             if (_previousQuarter.IsValid)
             {
-                var prevQuarterStart = _previousQuarter.StartTime;
+                // Calculate actual previous quarter calendar boundaries
                 var currentQuarterStart = GetQuarterStart(_lastQuarterYear, _lastQuarter);
+                var prevQuarterStart = currentQuarterStart.AddMonths(-3);
                 ContributePeriod(_previousQuarter, PeriodType.Quarterly, false, prevQuarterStart, currentQuarterStart);
             }
 
@@ -762,6 +769,7 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
             if (_previousYear.IsValid)
             {
+                // Calculate actual previous year calendar boundaries
                 var prevYearStart = new DateTime(_lastYear - 1, 1, 1);
                 var currentYearStart = new DateTime(_lastYear, 1, 1);
                 ContributePeriod(_previousYear, PeriodType.Yearly, false, prevYearStart, currentYearStart);
