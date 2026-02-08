@@ -145,6 +145,22 @@ namespace sadnerd.io.ATAS.KeyLevels
         private bool _showPrevQuarterHighLow = true;
         private bool _showPrevQuarterMid = true;
 
+        // Yearly visibility
+        private bool _showPrevYearHighLow = true;
+        private bool _showPrevYearMid = true;
+        private bool _showCurrentYearHighLow = true;
+        private bool _showCurrentYearMid = true;
+
+        // Weekly visibility (full week)
+        private bool _showWeekOpen = true;
+        private bool _showPrevWeekHighLow = true;
+        private bool _showPrevWeekMid = true;
+
+        // Monthly visibility
+        private bool _showMonthOpen = true;
+        private bool _showPrevMonthHighLow = true;
+        private bool _showPrevMonthMid = true;
+
         private readonly RenderStringFormat _labelFormat = new()
         {
             Alignment = StringAlignment.Near,
@@ -177,6 +193,22 @@ namespace sadnerd.io.ATAS.KeyLevels
         private int _lastQuarter = -1;
         private int _lastQuarterYear = -1;
 
+        // Yearly
+        private readonly PeriodRange _currentYear = new();
+        private readonly PeriodRange _previousYear = new();
+        private int _lastYear = -1;
+
+        // Weekly (full week)
+        private readonly PeriodRange _currentWeek = new();
+        private readonly PeriodRange _previousWeek = new();
+        private DateTime _lastWeekStart;
+
+        // Monthly
+        private readonly PeriodRange _currentMonth = new();
+        private readonly PeriodRange _previousMonth = new();
+        private int _lastMonth = -1;
+        private int _lastMonthYear = -1;
+
         #endregion
 
         #region Fields - Level Colors
@@ -185,6 +217,9 @@ namespace sadnerd.io.ATAS.KeyLevels
         private CrossColor _dailyColor = CrossColor.FromArgb(255, 33, 150, 243); // Blue
         private CrossColor _mondayColor = CrossColor.FromArgb(255, 156, 39, 176); // Purple
         private CrossColor _quarterlyColor = CrossColor.FromArgb(255, 76, 175, 80); // Green
+        private CrossColor _yearlyColor = CrossColor.FromArgb(255, 0, 150, 136); // Teal
+        private CrossColor _weeklyColor = CrossColor.FromArgb(255, 255, 152, 0); // Orange
+        private CrossColor _monthlyColor = CrossColor.FromArgb(255, 0, 188, 212); // Cyan
 
         #endregion
 
@@ -407,6 +442,119 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
         }
 
+        // Yearly visibility properties
+        [Display(Name = "Show Prev Year High/Low", GroupName = "Level Visibility - Yearly", Order = 10)]
+        public bool ShowPrevYearHighLow
+        {
+            get => _showPrevYearHighLow;
+            set
+            {
+                _showPrevYearHighLow = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Show Prev Year Mid", GroupName = "Level Visibility - Yearly", Order = 20)]
+        public bool ShowPrevYearMid
+        {
+            get => _showPrevYearMid;
+            set
+            {
+                _showPrevYearMid = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Show Current Year High/Low", GroupName = "Level Visibility - Yearly", Order = 30)]
+        public bool ShowCurrentYearHighLow
+        {
+            get => _showCurrentYearHighLow;
+            set
+            {
+                _showCurrentYearHighLow = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Show Current Year Mid", GroupName = "Level Visibility - Yearly", Order = 40)]
+        public bool ShowCurrentYearMid
+        {
+            get => _showCurrentYearMid;
+            set
+            {
+                _showCurrentYearMid = value;
+                RecalculateValues();
+            }
+        }
+
+        // Weekly visibility properties (full week)
+        [Display(Name = "Show Week Open", GroupName = "Level Visibility - Weekly", Order = 10)]
+        public bool ShowWeekOpen
+        {
+            get => _showWeekOpen;
+            set
+            {
+                _showWeekOpen = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Show Prev Week High/Low", GroupName = "Level Visibility - Weekly", Order = 20)]
+        public bool ShowPrevWeekHighLow
+        {
+            get => _showPrevWeekHighLow;
+            set
+            {
+                _showPrevWeekHighLow = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Show Prev Week Mid", GroupName = "Level Visibility - Weekly", Order = 30)]
+        public bool ShowPrevWeekMid
+        {
+            get => _showPrevWeekMid;
+            set
+            {
+                _showPrevWeekMid = value;
+                RecalculateValues();
+            }
+        }
+
+        // Monthly visibility properties
+        [Display(Name = "Show Month Open", GroupName = "Level Visibility - Monthly", Order = 10)]
+        public bool ShowMonthOpen
+        {
+            get => _showMonthOpen;
+            set
+            {
+                _showMonthOpen = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Show Prev Month High/Low", GroupName = "Level Visibility - Monthly", Order = 20)]
+        public bool ShowPrevMonthHighLow
+        {
+            get => _showPrevMonthHighLow;
+            set
+            {
+                _showPrevMonthHighLow = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Show Prev Month Mid", GroupName = "Level Visibility - Monthly", Order = 30)]
+        public bool ShowPrevMonthMid
+        {
+            get => _showPrevMonthMid;
+            set
+            {
+                _showPrevMonthMid = value;
+                RecalculateValues();
+            }
+        }
+
         #endregion
 
         #region Properties - Level Colors
@@ -455,6 +603,39 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
         }
 
+        [Display(Name = "Yearly Level Color", GroupName = "Level Colors", Order = 50)]
+        public CrossColor YearlyColor
+        {
+            get => _yearlyColor;
+            set
+            {
+                _yearlyColor = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Weekly Level Color", GroupName = "Level Colors", Order = 60)]
+        public CrossColor WeeklyColor
+        {
+            get => _weeklyColor;
+            set
+            {
+                _weeklyColor = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Monthly Level Color", GroupName = "Level Colors", Order = 70)]
+        public CrossColor MonthlyColor
+        {
+            get => _monthlyColor;
+            set
+            {
+                _monthlyColor = value;
+                RecalculateValues();
+            }
+        }
+
         #endregion
 
         #region Constructor
@@ -483,12 +664,22 @@ namespace sadnerd.io.ATAS.KeyLevels
             _previousMonday.Reset();
             _currentQuarter.Reset();
             _previousQuarter.Reset();
+            _currentYear.Reset();
+            _previousYear.Reset();
+            _currentWeek.Reset();
+            _previousWeek.Reset();
+            _currentMonth.Reset();
+            _previousMonth.Reset();
             _last4hPeriodStart = DateTime.MinValue;
             _sessionStartTime = DateTime.MinValue;
             _lastDayStart = DateTime.MinValue;
             _lastMondayStart = DateTime.MinValue;
             _lastQuarter = -1;
             _lastQuarterYear = -1;
+            _lastYear = -1;
+            _lastWeekStart = DateTime.MinValue;
+            _lastMonth = -1;
+            _lastMonthYear = -1;
         }
 
         protected override void OnCalculate(int bar, decimal value)
@@ -506,6 +697,15 @@ namespace sadnerd.io.ATAS.KeyLevels
 
             // Process quarterly periods
             ProcessQuarterlyPeriod(bar, candle);
+
+            // Process yearly periods
+            ProcessYearlyPeriod(bar, candle);
+
+            // Process weekly (full week) periods
+            ProcessWeeklyPeriod(bar, candle);
+
+            // Process monthly periods
+            ProcessMonthlyPeriod(bar, candle);
         }
 
         protected override void OnRender(RenderContext context, DrawingLayouts layout)
@@ -701,6 +901,105 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
         }
 
+        private void ProcessYearlyPeriod(int bar, IndicatorCandle candle)
+        {
+            var candleTime = candle.Time.AddHours(InstrumentInfo?.TimeZone ?? 0);
+            var currentYear = candleTime.Year;
+
+            // Detect new year
+            if (currentYear != _lastYear)
+            {
+                if (_lastYear != -1) // Not the first time
+                {
+                    if (_currentYear.IsValid)
+                    {
+                        // Copy current to previous
+                        _previousYear.Open = _currentYear.Open;
+                        _previousYear.High = _currentYear.High;
+                        _previousYear.Low = _currentYear.Low;
+                        _previousYear.Close = _currentYear.Close;
+                        _previousYear.StartTime = _currentYear.StartTime;
+                        _previousYear.StartBar = _currentYear.StartBar;
+                    }
+                }
+
+                _currentYear.Initialize(candle, bar);
+                _lastYear = currentYear;
+            }
+            else if (_currentYear.IsValid)
+            {
+                _currentYear.Update(candle);
+            }
+        }
+
+        private void ProcessWeeklyPeriod(int bar, IndicatorCandle candle)
+        {
+            var candleTime = candle.Time.AddHours(InstrumentInfo?.TimeZone ?? 0);
+            
+            // Calculate the Monday of the current week
+            var daysSinceMonday = (int)candleTime.DayOfWeek - 1;
+            if (daysSinceMonday < 0) daysSinceMonday = 6; // Sunday
+            var weekStart = candleTime.Date.AddDays(-daysSinceMonday);
+
+            // Detect new week
+            if (weekStart != _lastWeekStart)
+            {
+                if (_lastWeekStart != DateTime.MinValue) // Not the first time
+                {
+                    if (_currentWeek.IsValid)
+                    {
+                        // Copy current to previous
+                        _previousWeek.Open = _currentWeek.Open;
+                        _previousWeek.High = _currentWeek.High;
+                        _previousWeek.Low = _currentWeek.Low;
+                        _previousWeek.Close = _currentWeek.Close;
+                        _previousWeek.StartTime = _currentWeek.StartTime;
+                        _previousWeek.StartBar = _currentWeek.StartBar;
+                    }
+                }
+
+                _currentWeek.Initialize(candle, bar);
+                _lastWeekStart = weekStart;
+            }
+            else if (_currentWeek.IsValid)
+            {
+                _currentWeek.Update(candle);
+            }
+        }
+
+        private void ProcessMonthlyPeriod(int bar, IndicatorCandle candle)
+        {
+            var candleTime = candle.Time.AddHours(InstrumentInfo?.TimeZone ?? 0);
+            var currentMonth = candleTime.Month;
+            var currentYear = candleTime.Year;
+
+            // Detect new month
+            if (currentMonth != _lastMonth || currentYear != _lastMonthYear)
+            {
+                if (_lastMonth != -1) // Not the first time
+                {
+                    if (_currentMonth.IsValid)
+                    {
+                        // Copy current to previous
+                        _previousMonth.Open = _currentMonth.Open;
+                        _previousMonth.High = _currentMonth.High;
+                        _previousMonth.Low = _currentMonth.Low;
+                        _previousMonth.Close = _currentMonth.Close;
+                        _previousMonth.StartTime = _currentMonth.StartTime;
+                        _previousMonth.StartBar = _currentMonth.StartBar;
+                    }
+                }
+
+                _currentMonth.Initialize(candle, bar);
+                _lastMonth = currentMonth;
+                _lastMonthYear = currentYear;
+            }
+            else if (_currentMonth.IsValid)
+            {
+                _currentMonth.Update(candle);
+            }
+        }
+
         #endregion
 
         #region Level Collection
@@ -782,6 +1081,70 @@ namespace sadnerd.io.ATAS.KeyLevels
                 levels.Add(new KeyLevel(_previousQuarter.Mid, _useShortLabels ? "PQM" : "Prev Quarter Mid", _quarterlyColor));
             }
 
+            // Previous Year High/Low
+            if (_showPrevYearHighLow && _previousYear.IsValid)
+            {
+                levels.Add(new KeyLevel(_previousYear.High, _useShortLabels ? "PYH" : "Prev Year High", _yearlyColor));
+                levels.Add(new KeyLevel(_previousYear.Low, _useShortLabels ? "PYL" : "Prev Year Low", _yearlyColor));
+            }
+
+            // Previous Year Mid
+            if (_showPrevYearMid && _previousYear.IsValid)
+            {
+                levels.Add(new KeyLevel(_previousYear.Mid, _useShortLabels ? "PYM" : "Prev Year Mid", _yearlyColor));
+            }
+
+            // Current Year High/Low
+            if (_showCurrentYearHighLow && _currentYear.IsValid)
+            {
+                levels.Add(new KeyLevel(_currentYear.High, _useShortLabels ? "CYH" : "Year High", _yearlyColor));
+                levels.Add(new KeyLevel(_currentYear.Low, _useShortLabels ? "CYL" : "Year Low", _yearlyColor));
+            }
+
+            // Current Year Mid
+            if (_showCurrentYearMid && _currentYear.IsValid)
+            {
+                levels.Add(new KeyLevel(_currentYear.Mid, _useShortLabels ? "CYM" : "Year Mid", _yearlyColor));
+            }
+
+            // Week Open
+            if (_showWeekOpen && _currentWeek.IsValid)
+            {
+                levels.Add(new KeyLevel(_currentWeek.Open, _useShortLabels ? "WO" : "Week Open", _weeklyColor));
+            }
+
+            // Previous Week High/Low
+            if (_showPrevWeekHighLow && _previousWeek.IsValid)
+            {
+                levels.Add(new KeyLevel(_previousWeek.High, _useShortLabels ? "PWH" : "Prev Week High", _weeklyColor));
+                levels.Add(new KeyLevel(_previousWeek.Low, _useShortLabels ? "PWL" : "Prev Week Low", _weeklyColor));
+            }
+
+            // Previous Week Mid
+            if (_showPrevWeekMid && _previousWeek.IsValid)
+            {
+                levels.Add(new KeyLevel(_previousWeek.Mid, _useShortLabels ? "PWM" : "Prev Week Mid", _weeklyColor));
+            }
+
+            // Month Open
+            if (_showMonthOpen && _currentMonth.IsValid)
+            {
+                levels.Add(new KeyLevel(_currentMonth.Open, _useShortLabels ? "MO" : "Month Open", _monthlyColor));
+            }
+
+            // Previous Month High/Low
+            if (_showPrevMonthHighLow && _previousMonth.IsValid)
+            {
+                levels.Add(new KeyLevel(_previousMonth.High, _useShortLabels ? "PMH" : "Prev Month High", _monthlyColor));
+                levels.Add(new KeyLevel(_previousMonth.Low, _useShortLabels ? "PML" : "Prev Month Low", _monthlyColor));
+            }
+
+            // Previous Month Mid
+            if (_showPrevMonthMid && _previousMonth.IsValid)
+            {
+                levels.Add(new KeyLevel(_previousMonth.Mid, _useShortLabels ? "PMM" : "Prev Month Mid", _monthlyColor));
+            }
+
             return levels;
         }
 
@@ -819,6 +1182,32 @@ namespace sadnerd.io.ATAS.KeyLevels
                 unavailable.Add("PQ H/L");
             if (_showPrevQuarterMid && !_previousQuarter.IsValid)
                 unavailable.Add("PQ Mid");
+
+            // Yearly checks
+            if (_showPrevYearHighLow && !_previousYear.IsValid)
+                unavailable.Add("PY H/L");
+            if (_showPrevYearMid && !_previousYear.IsValid)
+                unavailable.Add("PY Mid");
+            if (_showCurrentYearHighLow && !_currentYear.IsValid)
+                unavailable.Add("CY H/L");
+            if (_showCurrentYearMid && !_currentYear.IsValid)
+                unavailable.Add("CY Mid");
+
+            // Weekly checks (full week)
+            if (_showWeekOpen && !_currentWeek.IsValid)
+                unavailable.Add("W Open");
+            if (_showPrevWeekHighLow && !_previousWeek.IsValid)
+                unavailable.Add("PW H/L");
+            if (_showPrevWeekMid && !_previousWeek.IsValid)
+                unavailable.Add("PW Mid");
+
+            // Monthly checks
+            if (_showMonthOpen && !_currentMonth.IsValid)
+                unavailable.Add("M Open");
+            if (_showPrevMonthHighLow && !_previousMonth.IsValid)
+                unavailable.Add("PM H/L");
+            if (_showPrevMonthMid && !_previousMonth.IsValid)
+                unavailable.Add("PM Mid");
 
             return unavailable;
         }
