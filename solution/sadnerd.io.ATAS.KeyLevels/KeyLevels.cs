@@ -691,7 +691,8 @@ namespace sadnerd.io.ATAS.KeyLevels
             // Contribute Daily data
             if (_currentDay.IsValid)
             {
-                ContributePeriod(_currentDay, PeriodType.Daily, true, _lastDayStart, GetDayEnd(_lastDayStart));
+                // Current day is still forming, use MaxValue to indicate ongoing
+                ContributePeriod(_currentDay, PeriodType.Daily, true, _lastDayStart, DateTime.MaxValue);
             }
             if (_previousDay.IsValid)
             {
@@ -703,7 +704,8 @@ namespace sadnerd.io.ATAS.KeyLevels
             // Contribute 4H data
             if (_current4h.IsValid)
             {
-                ContributePeriod(_current4h, PeriodType.FourHour, true, _last4hPeriodStart, _last4hPeriodStart.AddHours(4));
+                // Current 4H is still forming, use MaxValue to indicate ongoing
+                ContributePeriod(_current4h, PeriodType.FourHour, true, _last4hPeriodStart, DateTime.MaxValue);
             }
             if (_previous4h.IsValid)
             {
@@ -714,7 +716,8 @@ namespace sadnerd.io.ATAS.KeyLevels
             // Contribute Weekly data
             if (_currentWeek.IsValid)
             {
-                ContributePeriod(_currentWeek, PeriodType.Weekly, true, _lastWeekStart, _lastWeekStart.AddDays(7));
+                // Current week is still forming, use MaxValue to indicate ongoing
+                ContributePeriod(_currentWeek, PeriodType.Weekly, true, _lastWeekStart, DateTime.MaxValue);
             }
             if (_previousWeek.IsValid)
             {
@@ -725,6 +728,7 @@ namespace sadnerd.io.ATAS.KeyLevels
             // Contribute Monday data
             if (_currentMonday.IsValid)
             {
+                // Current Monday is still forming (during the day), use end of day
                 ContributePeriod(_currentMonday, PeriodType.Monday, true, _lastMondayStart, _lastMondayStart.AddDays(1));
             }
             if (_previousMonday.IsValid)
@@ -736,8 +740,9 @@ namespace sadnerd.io.ATAS.KeyLevels
             // Contribute Monthly data
             if (_currentMonth.IsValid)
             {
+                // Current month is still forming, use MaxValue to indicate ongoing
                 var monthStart = new DateTime(_lastMonthYear, _lastMonth, 1);
-                ContributePeriod(_currentMonth, PeriodType.Monthly, true, monthStart, monthStart.AddMonths(1));
+                ContributePeriod(_currentMonth, PeriodType.Monthly, true, monthStart, DateTime.MaxValue);
             }
             if (_previousMonth.IsValid)
             {
@@ -750,8 +755,9 @@ namespace sadnerd.io.ATAS.KeyLevels
             // Contribute Quarterly data
             if (_currentQuarter.IsValid)
             {
+                // Current quarter is still forming, use MaxValue to indicate ongoing
                 var quarterStart = GetQuarterStart(_lastQuarterYear, _lastQuarter);
-                ContributePeriod(_currentQuarter, PeriodType.Quarterly, true, quarterStart, quarterStart.AddMonths(3));
+                ContributePeriod(_currentQuarter, PeriodType.Quarterly, true, quarterStart, DateTime.MaxValue);
             }
             if (_previousQuarter.IsValid)
             {
@@ -764,8 +770,9 @@ namespace sadnerd.io.ATAS.KeyLevels
             // Contribute Yearly data
             if (_currentYear.IsValid)
             {
+                // Current year is still forming, use MaxValue to indicate ongoing
                 var yearStart = new DateTime(_lastYear, 1, 1);
-                ContributePeriod(_currentYear, PeriodType.Yearly, true, yearStart, yearStart.AddYears(1));
+                ContributePeriod(_currentYear, PeriodType.Yearly, true, yearStart, DateTime.MaxValue);
             }
             if (_previousYear.IsValid)
             {
