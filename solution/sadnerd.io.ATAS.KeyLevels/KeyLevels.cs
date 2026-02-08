@@ -1226,7 +1226,12 @@ namespace sadnerd.io.ATAS.KeyLevels
                 _ => region.Left
             };
 
-            return baseX + DistanceFromAnchor;
+            // For Right anchor, positive distance should move left (towards chart interior)
+            int effectiveDistance = Anchor == AnchorPosition.Right 
+                ? -DistanceFromAnchor 
+                : DistanceFromAnchor;
+
+            return baseX + effectiveDistance;
         }
 
         private List<LabelPosition> CalculateLabelPositions(RenderContext context, RenderFont font, List<KeyLevel> levels, Rectangle region)
