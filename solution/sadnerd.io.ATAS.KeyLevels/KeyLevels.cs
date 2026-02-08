@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using ATAS.Indicators;
+using ATAS.Indicators.Drawing;
 using OFT.Attributes;
 using OFT.Rendering.Context;
 using OFT.Rendering.Settings;
@@ -46,13 +47,15 @@ namespace sadnerd.io.ATAS.KeyLevels
         public string Label { get; set; }
         public CrossColor Color { get; set; }
         public DateTime? Date { get; set; }  // Optional date for daily and smaller timeframes
+        public int? StartBar { get; set; }   // Bar where this level originated (for ray rendering)
 
-        public KeyLevel(decimal price, string label, CrossColor color, DateTime? date = null)
+        public KeyLevel(decimal price, string label, CrossColor color, DateTime? date = null, int? startBar = null)
         {
             Price = price;
             Label = label;
             Color = color;
             Date = date;
+            StartBar = startBar;
         }
     }
 
@@ -89,17 +92,21 @@ namespace sadnerd.io.ATAS.KeyLevels
         public DateTime HighTime { get; set; }  // When the high was hit
         public DateTime LowTime { get; set; }   // When the low was hit
         public int StartBar { get; set; } = -1;
+        public int HighBar { get; set; } = -1;  // Bar where the high was hit
+        public int LowBar { get; set; } = -1;   // Bar where the low was hit
         public bool IsValid => StartBar >= 0;
 
         public void Reset()
         {
             Open = High = Low = Close = 0;
-            StartBar = -1;
+            StartBar = HighBar = LowBar = -1;
         }
 
         public void Initialize(IndicatorCandle candle, int bar)
         {
             StartBar = bar;
+            HighBar = bar;
+            LowBar = bar;
             StartTime = candle.Time;
             Open = candle.Open;
             High = candle.High;
@@ -109,17 +116,19 @@ namespace sadnerd.io.ATAS.KeyLevels
             LowTime = candle.Time;
         }
 
-        public void Update(IndicatorCandle candle)
+        public void Update(IndicatorCandle candle, int bar)
         {
             if (candle.High > High)
             {
                 High = candle.High;
                 HighTime = candle.Time;
+                HighBar = bar;
             }
             if (candle.Low < Low)
             {
                 Low = candle.Low;
                 LowTime = candle.Time;
+                LowBar = bar;
             }
             Close = candle.Close;
         }
@@ -147,6 +156,7 @@ namespace sadnerd.io.ATAS.KeyLevels
         private int _backgroundWidth = 150;
         private bool _useShortLabels = true;
         private LevelDateFormat _levelDateFormat = LevelDateFormat.Off;
+        private bool _renderAsRays = false;
 
         #endregion
 
@@ -358,6 +368,17 @@ namespace sadnerd.io.ATAS.KeyLevels
             set
             {
                 _levelDateFormat = value;
+                RecalculateValues();
+            }
+        }
+
+        [Display(Name = "Render as Rays", GroupName = "Drawing", Order = 90)]
+        public bool RenderAsRays
+        {
+            get => _renderAsRays;
+            set
+            {
+                _renderAsRays = value;
                 RecalculateValues();
             }
         }
@@ -981,6 +1002,23 @@ namespace sadnerd.io.ATAS.KeyLevels
 
             var region = Container.Region;
             var font = new RenderFont("Arial", FontSize);
+            
+            // Collect all levels to draw
+            var levels = GetDynamicLevels();
+            
+            // If rendering as rays, use TrendLines collection
+            if (_renderAsRays)
+            {
+                RenderAsRaysMode(levels);
+                
+                // Still draw unavailable levels warning
+                var unavailableLevels = GetUnavailableLevels();
+                if (unavailableLevels.Count > 0)
+                {
+                    DrawUnavailableWarning(context, font, unavailableLevels, region);
+                }
+                return;
+            }
 
             // Calculate anchor X position
             int anchorX = CalculateAnchorX(region);
@@ -998,9 +1036,6 @@ namespace sadnerd.io.ATAS.KeyLevels
             var backgroundRect = new Rectangle(rectX, region.Top, rectWidth, region.Height);
             context.FillRectangle(BackgroundColor.Convert(), backgroundRect);
 
-            // Collect all levels to draw
-            var levels = GetDynamicLevels();
-
             // Calculate label positions with overlap prevention
             var labelPositions = CalculateLabelPositions(context, font, levels, region);
 
@@ -1011,10 +1046,49 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
 
             // Check for unavailable levels and draw warning
-            var unavailableLevels = GetUnavailableLevels();
-            if (unavailableLevels.Count > 0)
+            var unavailable = GetUnavailableLevels();
+            if (unavailable.Count > 0)
             {
-                DrawUnavailableWarning(context, font, unavailableLevels, region);
+                DrawUnavailableWarning(context, font, unavailable, region);
+            }
+        }
+
+        private void RenderAsRaysMode(List<KeyLevel> levels)
+        {
+            // Clear existing trend lines
+            TrendLines.Clear();
+            
+            // Get visible bar range from chart (using protected properties from Indicator base)
+            int firstVisibleBar = FirstVisibleBarNumber;
+            int lastVisibleBar = LastVisibleBarNumber;
+            
+            // Create rays for each level
+            foreach (var level in levels)
+            {
+                // Determine the starting bar for the ray:
+                // 1. If the level has a StartBar and it's visible on chart, use it
+                // 2. Otherwise, use the first visible bar
+                int rayStartBar;
+                if (level.StartBar.HasValue && level.StartBar.Value >= firstVisibleBar && level.StartBar.Value <= lastVisibleBar)
+                {
+                    rayStartBar = level.StartBar.Value;
+                }
+                else
+                {
+                    rayStartBar = firstVisibleBar;
+                }
+                
+                // Convert CrossColor (System.Windows.Media.Color) to System.Drawing.Color for pen
+                var drawingColor = System.Drawing.Color.FromArgb(level.Color.A, level.Color.R, level.Color.G, level.Color.B);
+                var pen = new CrossPen(drawingColor, 1);
+                
+                // Create a horizontal ray from the starting bar extending to the right
+                var ray = new TrendLine(rayStartBar, level.Price, rayStartBar + 1, level.Price, pen)
+                {
+                    IsRay = true
+                };
+                
+                TrendLines.Add(ray);
             }
         }
 
@@ -1049,6 +1123,8 @@ namespace sadnerd.io.ATAS.KeyLevels
                     _previous4h.Close = _current4h.Close;
                     _previous4h.StartTime = _current4h.StartTime;
                     _previous4h.StartBar = _current4h.StartBar;
+                    _previous4h.HighBar = _current4h.HighBar;
+                    _previous4h.LowBar = _current4h.LowBar;
                 }
 
                 _current4h.Initialize(candle, bar);
@@ -1056,7 +1132,7 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
             else if (_current4h.IsValid)
             {
-                _current4h.Update(candle);
+                _current4h.Update(candle, bar);
             }
         }
 
@@ -1078,6 +1154,8 @@ namespace sadnerd.io.ATAS.KeyLevels
                         _previousDay.Close = _currentDay.Close;
                         _previousDay.StartTime = _currentDay.StartTime;
                         _previousDay.StartBar = _currentDay.StartBar;
+                        _previousDay.HighBar = _currentDay.HighBar;
+                        _previousDay.LowBar = _currentDay.LowBar;
                     }
 
                     _currentDay.Initialize(candle, bar);
@@ -1090,7 +1168,7 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
             else if (_currentDay.IsValid)
             {
-                _currentDay.Update(candle);
+                _currentDay.Update(candle, bar);
             }
             else if (bar == 0)
             {
@@ -1121,6 +1199,8 @@ namespace sadnerd.io.ATAS.KeyLevels
                         _previousMonday.Close = _currentMonday.Close;
                         _previousMonday.StartTime = _currentMonday.StartTime;
                         _previousMonday.StartBar = _currentMonday.StartBar;
+                        _previousMonday.HighBar = _currentMonday.HighBar;
+                        _previousMonday.LowBar = _currentMonday.LowBar;
                     }
 
                     _currentMonday.Initialize(candle, bar);
@@ -1130,7 +1210,7 @@ namespace sadnerd.io.ATAS.KeyLevels
             else if (isMonday && _currentMonday.IsValid && _currentMonday.StartTime.Date == candleTime.Date)
             {
                 // Still the same Monday, update the range
-                _currentMonday.Update(candle);
+                _currentMonday.Update(candle, bar);
             }
         }
 
@@ -1154,6 +1234,8 @@ namespace sadnerd.io.ATAS.KeyLevels
                         _previousQuarter.Close = _currentQuarter.Close;
                         _previousQuarter.StartTime = _currentQuarter.StartTime;
                         _previousQuarter.StartBar = _currentQuarter.StartBar;
+                        _previousQuarter.HighBar = _currentQuarter.HighBar;
+                        _previousQuarter.LowBar = _currentQuarter.LowBar;
                     }
                 }
 
@@ -1163,7 +1245,7 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
             else if (_currentQuarter.IsValid)
             {
-                _currentQuarter.Update(candle);
+                _currentQuarter.Update(candle, bar);
             }
         }
 
@@ -1186,6 +1268,8 @@ namespace sadnerd.io.ATAS.KeyLevels
                         _previousYear.Close = _currentYear.Close;
                         _previousYear.StartTime = _currentYear.StartTime;
                         _previousYear.StartBar = _currentYear.StartBar;
+                        _previousYear.HighBar = _currentYear.HighBar;
+                        _previousYear.LowBar = _currentYear.LowBar;
                     }
                 }
 
@@ -1194,7 +1278,7 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
             else if (_currentYear.IsValid)
             {
-                _currentYear.Update(candle);
+                _currentYear.Update(candle, bar);
             }
         }
 
@@ -1221,6 +1305,8 @@ namespace sadnerd.io.ATAS.KeyLevels
                         _previousWeek.Close = _currentWeek.Close;
                         _previousWeek.StartTime = _currentWeek.StartTime;
                         _previousWeek.StartBar = _currentWeek.StartBar;
+                        _previousWeek.HighBar = _currentWeek.HighBar;
+                        _previousWeek.LowBar = _currentWeek.LowBar;
                     }
                 }
 
@@ -1229,7 +1315,7 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
             else if (_currentWeek.IsValid)
             {
-                _currentWeek.Update(candle);
+                _currentWeek.Update(candle, bar);
             }
         }
 
@@ -1253,6 +1339,8 @@ namespace sadnerd.io.ATAS.KeyLevels
                         _previousMonth.Close = _currentMonth.Close;
                         _previousMonth.StartTime = _currentMonth.StartTime;
                         _previousMonth.StartBar = _currentMonth.StartBar;
+                        _previousMonth.HighBar = _currentMonth.HighBar;
+                        _previousMonth.LowBar = _currentMonth.LowBar;
                     }
                 }
 
@@ -1262,7 +1350,7 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
             else if (_currentMonth.IsValid)
             {
-                _currentMonth.Update(candle);
+                _currentMonth.Update(candle, bar);
             }
         }
 
@@ -1277,39 +1365,39 @@ namespace sadnerd.io.ATAS.KeyLevels
             // Previous 4H High/Low - require complete coverage
             if (_show4hHighLow && _previous4h.IsValid && HasAdequateCoverage(PeriodType.FourHour, false, requireComplete: true))
             {
-                levels.Add(new KeyLevel(_previous4h.High, _useShortLabels ? "P4HH" : "Prev 4H High", _4hColor, _previous4h.HighTime));
-                levels.Add(new KeyLevel(_previous4h.Low, _useShortLabels ? "P4HL" : "Prev 4H Low", _4hColor, _previous4h.LowTime));
+                levels.Add(new KeyLevel(_previous4h.High, _useShortLabels ? "P4HH" : "Prev 4H High", _4hColor, _previous4h.HighTime, _previous4h.HighBar));
+                levels.Add(new KeyLevel(_previous4h.Low, _useShortLabels ? "P4HL" : "Prev 4H Low", _4hColor, _previous4h.LowTime, _previous4h.LowBar));
             }
 
             // Current 4H Open - just need period start
             if (_show4hOpen && _current4h.IsValid && HasAdequateCoverage(PeriodType.FourHour, true, requireComplete: false))
             {
-                levels.Add(new KeyLevel(_current4h.Open, _useShortLabels ? "4HO" : "4H Open", _4hColor, _current4h.StartTime));
+                levels.Add(new KeyLevel(_current4h.Open, _useShortLabels ? "4HO" : "4H Open", _4hColor, _current4h.StartTime, _current4h.StartBar));
             }
 
             // Previous 4H Mid - require complete coverage
             if (_show4hMid && _previous4h.IsValid && HasAdequateCoverage(PeriodType.FourHour, false, requireComplete: true))
             {
-                levels.Add(new KeyLevel(_previous4h.Mid, _useShortLabels ? "P4HM" : "Prev 4H Mid", _4hColor, _previous4h.StartTime));
+                levels.Add(new KeyLevel(_previous4h.Mid, _useShortLabels ? "P4HM" : "Prev 4H Mid", _4hColor, _previous4h.StartTime, _previous4h.StartBar));
             }
 
             // Daily Open - just need period start
             if (_showDailyOpen && _currentDay.IsValid && HasAdequateCoverage(PeriodType.Daily, true, requireComplete: false))
             {
-                levels.Add(new KeyLevel(_currentDay.Open, _useShortLabels ? "DO" : "Day Open", _dailyColor, _currentDay.StartTime));
+                levels.Add(new KeyLevel(_currentDay.Open, _useShortLabels ? "DO" : "Day Open", _dailyColor, _currentDay.StartTime, _currentDay.StartBar));
             }
 
             // Previous Day High/Low - require complete coverage
             if (_showPrevDayHighLow && _previousDay.IsValid && HasAdequateCoverage(PeriodType.Daily, false, requireComplete: true))
             {
-                levels.Add(new KeyLevel(_previousDay.High, _useShortLabels ? "PDH" : "Prev Day High", _dailyColor, _previousDay.HighTime));
-                levels.Add(new KeyLevel(_previousDay.Low, _useShortLabels ? "PDL" : "Prev Day Low", _dailyColor, _previousDay.LowTime));
+                levels.Add(new KeyLevel(_previousDay.High, _useShortLabels ? "PDH" : "Prev Day High", _dailyColor, _previousDay.HighTime, _previousDay.HighBar));
+                levels.Add(new KeyLevel(_previousDay.Low, _useShortLabels ? "PDL" : "Prev Day Low", _dailyColor, _previousDay.LowTime, _previousDay.LowBar));
             }
 
             // Previous Day Mid - require complete coverage
             if (_showPrevDayMid && _previousDay.IsValid && HasAdequateCoverage(PeriodType.Daily, false, requireComplete: true))
             {
-                levels.Add(new KeyLevel(_previousDay.Mid, _useShortLabels ? "PDM" : "Prev Day Mid", _dailyColor, _previousDay.StartTime));
+                levels.Add(new KeyLevel(_previousDay.Mid, _useShortLabels ? "PDM" : "Prev Day Mid", _dailyColor, _previousDay.StartTime, _previousDay.StartBar));
             }
 
             // Monday High/Low - prefer current week's Monday, fallback to previous (require complete coverage)
@@ -1321,97 +1409,97 @@ namespace sadnerd.io.ATAS.KeyLevels
             
             if (_showMondayHighLow && hasMondayCoverage)
             {
-                levels.Add(new KeyLevel(usedMondayRange.High, _useShortLabels ? (isPrevMonday ? "PMDAYH" : "MDAYH") : (isPrevMonday ? "Prev Mon High" : "Mon High"), _mondayColor, usedMondayRange.HighTime));
-                levels.Add(new KeyLevel(usedMondayRange.Low, _useShortLabels ? (isPrevMonday ? "PMDAYL" : "MDAYL") : (isPrevMonday ? "Prev Mon Low" : "Mon Low"), _mondayColor, usedMondayRange.LowTime));
+                levels.Add(new KeyLevel(usedMondayRange.High, _useShortLabels ? (isPrevMonday ? "PMDAYH" : "MDAYH") : (isPrevMonday ? "Prev Mon High" : "Mon High"), _mondayColor, usedMondayRange.HighTime, usedMondayRange.HighBar));
+                levels.Add(new KeyLevel(usedMondayRange.Low, _useShortLabels ? (isPrevMonday ? "PMDAYL" : "MDAYL") : (isPrevMonday ? "Prev Mon Low" : "Mon Low"), _mondayColor, usedMondayRange.LowTime, usedMondayRange.LowBar));
             }
 
             // Monday Mid (include date)
             if (_showMondayMid && hasMondayCoverage)
             {
-                levels.Add(new KeyLevel(usedMondayRange.Mid, _useShortLabels ? (isPrevMonday ? "PMDAYM" : "MDAYM") : (isPrevMonday ? "Prev Mon Mid" : "Mon Mid"), _mondayColor, usedMondayRange.StartTime));
+                levels.Add(new KeyLevel(usedMondayRange.Mid, _useShortLabels ? (isPrevMonday ? "PMDAYM" : "MDAYM") : (isPrevMonday ? "Prev Mon Mid" : "Mon Mid"), _mondayColor, usedMondayRange.StartTime, usedMondayRange.StartBar));
             }
 
             // Quarterly Open - just need period start
             if (_showQuarterlyOpen && _currentQuarter.IsValid && HasAdequateCoverage(PeriodType.Quarterly, true, requireComplete: false))
             {
-                levels.Add(new KeyLevel(_currentQuarter.Open, _useShortLabels ? "QO" : "Quarter Open", _quarterlyColor, _currentQuarter.StartTime));
+                levels.Add(new KeyLevel(_currentQuarter.Open, _useShortLabels ? "QO" : "Quarter Open", _quarterlyColor, _currentQuarter.StartTime, _currentQuarter.StartBar));
             }
 
             // Previous Quarter High/Low - require complete coverage
             if (_showPrevQuarterHighLow && _previousQuarter.IsValid && HasAdequateCoverage(PeriodType.Quarterly, false, requireComplete: true))
             {
-                levels.Add(new KeyLevel(_previousQuarter.High, _useShortLabels ? "PQH" : "Prev Quarter High", _quarterlyColor, _previousQuarter.HighTime));
-                levels.Add(new KeyLevel(_previousQuarter.Low, _useShortLabels ? "PQL" : "Prev Quarter Low", _quarterlyColor, _previousQuarter.LowTime));
+                levels.Add(new KeyLevel(_previousQuarter.High, _useShortLabels ? "PQH" : "Prev Quarter High", _quarterlyColor, _previousQuarter.HighTime, _previousQuarter.HighBar));
+                levels.Add(new KeyLevel(_previousQuarter.Low, _useShortLabels ? "PQL" : "Prev Quarter Low", _quarterlyColor, _previousQuarter.LowTime, _previousQuarter.LowBar));
             }
 
             // Previous Quarter Mid - require complete coverage
             if (_showPrevQuarterMid && _previousQuarter.IsValid && HasAdequateCoverage(PeriodType.Quarterly, false, requireComplete: true))
             {
-                levels.Add(new KeyLevel(_previousQuarter.Mid, _useShortLabels ? "PQM" : "Prev Quarter Mid", _quarterlyColor, _previousQuarter.StartTime));
+                levels.Add(new KeyLevel(_previousQuarter.Mid, _useShortLabels ? "PQM" : "Prev Quarter Mid", _quarterlyColor, _previousQuarter.StartTime, _previousQuarter.StartBar));
             }
 
             // Previous Year High/Low - require complete coverage
             if (_showPrevYearHighLow && _previousYear.IsValid && HasAdequateCoverage(PeriodType.Yearly, false, requireComplete: true))
             {
-                levels.Add(new KeyLevel(_previousYear.High, _useShortLabels ? "PYH" : "Prev Year High", _yearlyColor, _previousYear.HighTime));
-                levels.Add(new KeyLevel(_previousYear.Low, _useShortLabels ? "PYL" : "Prev Year Low", _yearlyColor, _previousYear.LowTime));
+                levels.Add(new KeyLevel(_previousYear.High, _useShortLabels ? "PYH" : "Prev Year High", _yearlyColor, _previousYear.HighTime, _previousYear.HighBar));
+                levels.Add(new KeyLevel(_previousYear.Low, _useShortLabels ? "PYL" : "Prev Year Low", _yearlyColor, _previousYear.LowTime, _previousYear.LowBar));
             }
 
             // Previous Year Mid - require complete coverage
             if (_showPrevYearMid && _previousYear.IsValid && HasAdequateCoverage(PeriodType.Yearly, false, requireComplete: true))
             {
-                levels.Add(new KeyLevel(_previousYear.Mid, _useShortLabels ? "PYM" : "Prev Year Mid", _yearlyColor, _previousYear.StartTime));
+                levels.Add(new KeyLevel(_previousYear.Mid, _useShortLabels ? "PYM" : "Prev Year Mid", _yearlyColor, _previousYear.StartTime, _previousYear.StartBar));
             }
 
             // Current Year High/Low - require complete coverage (all data from year start to now)
             if (_showCurrentYearHighLow && _currentYear.IsValid && HasAdequateCoverage(PeriodType.Yearly, true, requireComplete: true))
             {
-                levels.Add(new KeyLevel(_currentYear.High, _useShortLabels ? "CYH" : "Year High", _yearlyColor, _currentYear.HighTime));
-                levels.Add(new KeyLevel(_currentYear.Low, _useShortLabels ? "CYL" : "Year Low", _yearlyColor, _currentYear.LowTime));
+                levels.Add(new KeyLevel(_currentYear.High, _useShortLabels ? "CYH" : "Year High", _yearlyColor, _currentYear.HighTime, _currentYear.HighBar));
+                levels.Add(new KeyLevel(_currentYear.Low, _useShortLabels ? "CYL" : "Year Low", _yearlyColor, _currentYear.LowTime, _currentYear.LowBar));
             }
 
             // Current Year Mid - require complete coverage
             if (_showCurrentYearMid && _currentYear.IsValid && HasAdequateCoverage(PeriodType.Yearly, true, requireComplete: true))
             {
-                levels.Add(new KeyLevel(_currentYear.Mid, _useShortLabels ? "CYM" : "Year Mid", _yearlyColor, _currentYear.StartTime));
+                levels.Add(new KeyLevel(_currentYear.Mid, _useShortLabels ? "CYM" : "Year Mid", _yearlyColor, _currentYear.StartTime, _currentYear.StartBar));
             }
 
             // Week Open - just need period start
             if (_showWeekOpen && _currentWeek.IsValid && HasAdequateCoverage(PeriodType.Weekly, true, requireComplete: false))
             {
-                levels.Add(new KeyLevel(_currentWeek.Open, _useShortLabels ? "WO" : "Week Open", _weeklyColor, _currentWeek.StartTime));
+                levels.Add(new KeyLevel(_currentWeek.Open, _useShortLabels ? "WO" : "Week Open", _weeklyColor, _currentWeek.StartTime, _currentWeek.StartBar));
             }
 
             // Previous Week High/Low - require complete coverage
             if (_showPrevWeekHighLow && _previousWeek.IsValid && HasAdequateCoverage(PeriodType.Weekly, false, requireComplete: true))
             {
-                levels.Add(new KeyLevel(_previousWeek.High, _useShortLabels ? "PWH" : "Prev Week High", _weeklyColor, _previousWeek.HighTime));
-                levels.Add(new KeyLevel(_previousWeek.Low, _useShortLabels ? "PWL" : "Prev Week Low", _weeklyColor, _previousWeek.LowTime));
+                levels.Add(new KeyLevel(_previousWeek.High, _useShortLabels ? "PWH" : "Prev Week High", _weeklyColor, _previousWeek.HighTime, _previousWeek.HighBar));
+                levels.Add(new KeyLevel(_previousWeek.Low, _useShortLabels ? "PWL" : "Prev Week Low", _weeklyColor, _previousWeek.LowTime, _previousWeek.LowBar));
             }
 
             // Previous Week Mid - require complete coverage
             if (_showPrevWeekMid && _previousWeek.IsValid && HasAdequateCoverage(PeriodType.Weekly, false, requireComplete: true))
             {
-                levels.Add(new KeyLevel(_previousWeek.Mid, _useShortLabels ? "PWM" : "Prev Week Mid", _weeklyColor, _previousWeek.StartTime));
+                levels.Add(new KeyLevel(_previousWeek.Mid, _useShortLabels ? "PWM" : "Prev Week Mid", _weeklyColor, _previousWeek.StartTime, _previousWeek.StartBar));
             }
 
             // Month Open - just need period start
             if (_showMonthOpen && _currentMonth.IsValid && HasAdequateCoverage(PeriodType.Monthly, true, requireComplete: false))
             {
-                levels.Add(new KeyLevel(_currentMonth.Open, _useShortLabels ? "MO" : "Month Open", _monthlyColor, _currentMonth.StartTime));
+                levels.Add(new KeyLevel(_currentMonth.Open, _useShortLabels ? "MO" : "Month Open", _monthlyColor, _currentMonth.StartTime, _currentMonth.StartBar));
             }
 
             // Previous Month High/Low - require complete coverage
             if (_showPrevMonthHighLow && _previousMonth.IsValid && HasAdequateCoverage(PeriodType.Monthly, false, requireComplete: true))
             {
-                levels.Add(new KeyLevel(_previousMonth.High, _useShortLabels ? "PMH" : "Prev Month High", _monthlyColor, _previousMonth.HighTime));
-                levels.Add(new KeyLevel(_previousMonth.Low, _useShortLabels ? "PML" : "Prev Month Low", _monthlyColor, _previousMonth.LowTime));
+                levels.Add(new KeyLevel(_previousMonth.High, _useShortLabels ? "PMH" : "Prev Month High", _monthlyColor, _previousMonth.HighTime, _previousMonth.HighBar));
+                levels.Add(new KeyLevel(_previousMonth.Low, _useShortLabels ? "PML" : "Prev Month Low", _monthlyColor, _previousMonth.LowTime, _previousMonth.LowBar));
             }
 
             // Previous Month Mid - require complete coverage
             if (_showPrevMonthMid && _previousMonth.IsValid && HasAdequateCoverage(PeriodType.Monthly, false, requireComplete: true))
             {
-                levels.Add(new KeyLevel(_previousMonth.Mid, _useShortLabels ? "PMM" : "Prev Month Mid", _monthlyColor, _previousMonth.StartTime));
+                levels.Add(new KeyLevel(_previousMonth.Mid, _useShortLabels ? "PMM" : "Prev Month Mid", _monthlyColor, _previousMonth.StartTime, _previousMonth.StartBar));
             }
 
             return levels;
