@@ -5,6 +5,7 @@ using OFT.Attributes;
 using OFT.Rendering.Context;
 using OFT.Rendering.Settings;
 using OFT.Rendering.Tools;
+using sadnerd.io.ATAS.KeyLevels.DataAggregation;
 using Rectangle = System.Drawing.Rectangle;
 using StringAlignment = System.Drawing.StringAlignment;
 using Color = System.Drawing.Color;
@@ -208,6 +209,14 @@ namespace sadnerd.io.ATAS.KeyLevels
         private readonly PeriodRange _previousMonth = new();
         private int _lastMonth = -1;
         private int _lastMonthYear = -1;
+
+        #endregion
+
+        #region Fields - Data Aggregation
+
+        private InstrumentDataStore? _dataStore;
+        private string _contributorId = Guid.NewGuid().ToString();
+        private DateTime _lastContributionTime = DateTime.MinValue;
 
         #endregion
 
@@ -652,6 +661,157 @@ namespace sadnerd.io.ATAS.KeyLevels
 
         #endregion
 
+        #region Data Aggregation
+
+        /// <summary>
+        /// Initializes the data store for the current instrument.
+        /// </summary>
+        private void EnsureDataStoreInitialized()
+        {
+            if (_dataStore != null)
+                return;
+
+            var instrument = InstrumentInfo?.Instrument;
+            if (!string.IsNullOrEmpty(instrument))
+            {
+                _dataStore = KeyLevelDataService.Instance.GetStore(instrument);
+            }
+        }
+
+        /// <summary>
+        /// Contributes current period data to the aggregation layer.
+        /// </summary>
+        private void ContributeDataToAggregator(IndicatorCandle latestCandle)
+        {
+            if (_dataStore == null)
+                return;
+
+            var now = latestCandle.Time;
+            
+            // Contribute Daily data
+            if (_currentDay.IsValid)
+            {
+                ContributePeriod(_currentDay, PeriodType.Daily, true, _lastDayStart, GetDayEnd(_lastDayStart));
+            }
+            if (_previousDay.IsValid)
+            {
+                ContributePeriod(_previousDay, PeriodType.Daily, false, _previousDay.StartTime, _lastDayStart);
+            }
+
+            // Contribute 4H data
+            if (_current4h.IsValid)
+            {
+                ContributePeriod(_current4h, PeriodType.FourHour, true, _last4hPeriodStart, _last4hPeriodStart.AddHours(4));
+            }
+            if (_previous4h.IsValid)
+            {
+                ContributePeriod(_previous4h, PeriodType.FourHour, false, _previous4h.StartTime, _last4hPeriodStart);
+            }
+
+            // Contribute Weekly data
+            if (_currentWeek.IsValid)
+            {
+                ContributePeriod(_currentWeek, PeriodType.Weekly, true, _lastWeekStart, _lastWeekStart.AddDays(7));
+            }
+            if (_previousWeek.IsValid)
+            {
+                ContributePeriod(_previousWeek, PeriodType.Weekly, false, _previousWeek.StartTime, _lastWeekStart);
+            }
+
+            // Contribute Monday data
+            if (_currentMonday.IsValid)
+            {
+                ContributePeriod(_currentMonday, PeriodType.Monday, true, _lastMondayStart, _lastMondayStart.AddDays(1));
+            }
+            if (_previousMonday.IsValid)
+            {
+                ContributePeriod(_previousMonday, PeriodType.Monday, false, _previousMonday.StartTime, _lastMondayStart);
+            }
+
+            // Contribute Monthly data
+            if (_currentMonth.IsValid)
+            {
+                var monthStart = new DateTime(_lastMonthYear, _lastMonth, 1);
+                ContributePeriod(_currentMonth, PeriodType.Monthly, true, monthStart, monthStart.AddMonths(1));
+            }
+            if (_previousMonth.IsValid)
+            {
+                var prevMonthStart = _previousMonth.StartTime;
+                var currentMonthStart = new DateTime(_lastMonthYear, _lastMonth, 1);
+                ContributePeriod(_previousMonth, PeriodType.Monthly, false, prevMonthStart, currentMonthStart);
+            }
+
+            // Contribute Quarterly data
+            if (_currentQuarter.IsValid)
+            {
+                var quarterStart = GetQuarterStart(_lastQuarterYear, _lastQuarter);
+                ContributePeriod(_currentQuarter, PeriodType.Quarterly, true, quarterStart, quarterStart.AddMonths(3));
+            }
+            if (_previousQuarter.IsValid)
+            {
+                var prevQuarterStart = _previousQuarter.StartTime;
+                var currentQuarterStart = GetQuarterStart(_lastQuarterYear, _lastQuarter);
+                ContributePeriod(_previousQuarter, PeriodType.Quarterly, false, prevQuarterStart, currentQuarterStart);
+            }
+
+            // Contribute Yearly data
+            if (_currentYear.IsValid)
+            {
+                var yearStart = new DateTime(_lastYear, 1, 1);
+                ContributePeriod(_currentYear, PeriodType.Yearly, true, yearStart, yearStart.AddYears(1));
+            }
+            if (_previousYear.IsValid)
+            {
+                var prevYearStart = new DateTime(_lastYear - 1, 1, 1);
+                var currentYearStart = new DateTime(_lastYear, 1, 1);
+                ContributePeriod(_previousYear, PeriodType.Yearly, false, prevYearStart, currentYearStart);
+            }
+        }
+
+        private void ContributePeriod(PeriodRange range, PeriodType periodType, bool isCurrent, DateTime periodStart, DateTime periodEnd)
+        {
+            if (_dataStore == null || !range.IsValid)
+                return;
+
+            var timeRange = new TimeRange
+            {
+                Start = range.StartTime,
+                End = GetCandle(CurrentBar - 1).Time.AddMinutes(GetCandleDurationMinutes()),
+                Open = range.Open,
+                High = range.High,
+                Low = range.Low,
+                Close = range.Close,
+                SourceId = _contributorId
+            };
+
+            _dataStore.ContributePeriodData(periodType, isCurrent, periodStart, periodEnd, timeRange);
+        }
+
+        private DateTime GetDayEnd(DateTime dayStart)
+        {
+            // TODO: Ideally use session end time, for now assume next day
+            return dayStart.Date.AddDays(1);
+        }
+
+        private DateTime GetQuarterStart(int year, int quarter)
+        {
+            var month = (quarter - 1) * 3 + 1;
+            return new DateTime(year, month, 1);
+        }
+
+        private int GetCandleDurationMinutes()
+        {
+            // Estimate candle duration from context
+            if (CurrentBar < 2)
+                return 1;
+
+            var candle0 = GetCandle(0);
+            var candle1 = GetCandle(1);
+            return (int)Math.Max(1, (candle1.Time - candle0.Time).TotalMinutes);
+        }
+
+        #endregion
+
         #region Overrides
 
         protected override void OnRecalculate()
@@ -684,6 +844,9 @@ namespace sadnerd.io.ATAS.KeyLevels
 
         protected override void OnCalculate(int bar, decimal value)
         {
+            // Ensure data store is initialized for this instrument
+            EnsureDataStoreInitialized();
+
             var candle = GetCandle(bar);
 
             // Process daily periods first (need session start for 4H calculation)
@@ -706,6 +869,9 @@ namespace sadnerd.io.ATAS.KeyLevels
 
             // Process monthly periods
             ProcessMonthlyPeriod(bar, candle);
+
+            // Contribute processed data to the aggregation layer
+            ContributeDataToAggregator(candle);
         }
 
         protected override void OnRender(RenderContext context, DrawingLayouts layout)
