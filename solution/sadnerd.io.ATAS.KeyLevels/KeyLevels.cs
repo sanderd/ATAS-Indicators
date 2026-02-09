@@ -258,6 +258,8 @@ namespace sadnerd.io.ATAS.KeyLevels
         private InstrumentDataStore? _dataStore;
         private string _contributorId = Guid.NewGuid().ToString();
         private DateTime _lastContributionTime = DateTime.MinValue;
+        private DateTime _lastDiagnosticLogTime = DateTime.MinValue;
+        private const int DiagnosticLogIntervalSeconds = 15;
 
         #endregion
 
@@ -743,6 +745,7 @@ namespace sadnerd.io.ATAS.KeyLevels
 
         /// <summary>
         /// Contributes current period data to the aggregation layer.
+        /// Only contributes data for periods where this chart has sufficient resolution.
         /// </summary>
         private void ContributeDataToAggregator(IndicatorCandle latestCandle)
         {
@@ -750,99 +753,106 @@ namespace sadnerd.io.ATAS.KeyLevels
                 return;
 
             var now = latestCandle.Time;
+            var candleDuration = GetCandleDurationMinutes();
             
-            // Contribute Daily data
-            if (_currentDay.IsValid)
+            // Resolution thresholds (in minutes) - only contribute if candle duration is <= period duration
+            // A chart can accurately track a period when each candle represents <= one period
+            const int FourHourThreshold = 240;      // 4 hours
+            const int DailyThreshold = 1440;        // 24 hours
+            const int WeeklyThreshold = 10080;      // 7 days
+            const int MonthlyThreshold = 43200;     // ~30 days
+            const int QuarterlyThreshold = 129600;  // ~90 days
+            const int YearlyThreshold = 525600;     // ~365 days
+            
+            // Contribute Daily data (daily charts qualify since 1 candle = 1 day)
+            if (candleDuration <= DailyThreshold)
             {
-                // Current day is still forming, use MaxValue to indicate ongoing
-                ContributePeriod(_currentDay, PeriodType.Daily, true, _lastDayStart, DateTime.MaxValue);
-            }
-            if (_previousDay.IsValid)
-            {
-                // Use actual previous day start, not data start time
-                var prevDayStart = _lastDayStart.AddDays(-1);
-                ContributePeriod(_previousDay, PeriodType.Daily, false, prevDayStart, _lastDayStart);
-            }
-
-            // Contribute 4H data
-            if (_current4h.IsValid)
-            {
-                // Current 4H is still forming, use MaxValue to indicate ongoing
-                ContributePeriod(_current4h, PeriodType.FourHour, true, _last4hPeriodStart, DateTime.MaxValue);
-            }
-            if (_previous4h.IsValid)
-            {
-                var prev4hStart = _last4hPeriodStart.AddHours(-4);
-                ContributePeriod(_previous4h, PeriodType.FourHour, false, prev4hStart, _last4hPeriodStart);
+                if (_currentDay.IsValid)
+                {
+                    ContributePeriod(_currentDay, PeriodType.Daily, true, _currentDay.StartTime, DateTime.MaxValue);
+                }
+                if (_previousDay.IsValid)
+                {
+                    ContributePeriod(_previousDay, PeriodType.Daily, false, _previousDay.StartTime, _currentDay.IsValid ? _currentDay.StartTime : DateTime.MaxValue);
+                }
             }
 
-            // Contribute Weekly data
-            if (_currentWeek.IsValid)
+            // Contribute 4H data - only if chart has <= 4H candles
+            if (candleDuration <= FourHourThreshold)
             {
-                // Current week is still forming, use MaxValue to indicate ongoing
-                ContributePeriod(_currentWeek, PeriodType.Weekly, true, _lastWeekStart, DateTime.MaxValue);
-            }
-            if (_previousWeek.IsValid)
-            {
-                var prevWeekStart = _lastWeekStart.AddDays(-7);
-                ContributePeriod(_previousWeek, PeriodType.Weekly, false, prevWeekStart, _lastWeekStart);
-            }
-
-            // Contribute Monday data
-            if (_currentMonday.IsValid)
-            {
-                // Current Monday is still forming (during the day), use end of day
-                ContributePeriod(_currentMonday, PeriodType.Monday, true, _lastMondayStart, _lastMondayStart.AddDays(1));
-            }
-            if (_previousMonday.IsValid)
-            {
-                var prevMondayStart = _lastMondayStart.AddDays(-7);
-                ContributePeriod(_previousMonday, PeriodType.Monday, false, prevMondayStart, prevMondayStart.AddDays(1));
+                if (_current4h.IsValid)
+                {
+                    ContributePeriod(_current4h, PeriodType.FourHour, true, _current4h.StartTime, DateTime.MaxValue);
+                }
+                if (_previous4h.IsValid)
+                {
+                    ContributePeriod(_previous4h, PeriodType.FourHour, false, _previous4h.StartTime, _current4h.IsValid ? _current4h.StartTime : DateTime.MaxValue);
+                }
             }
 
-            // Contribute Monthly data
-            if (_currentMonth.IsValid)
+            // Contribute Weekly data - only if chart has <= 7 day candles
+            if (candleDuration <= WeeklyThreshold)
             {
-                // Current month is still forming, use MaxValue to indicate ongoing
-                var monthStart = new DateTime(_lastMonthYear, _lastMonth, 1);
-                ContributePeriod(_currentMonth, PeriodType.Monthly, true, monthStart, DateTime.MaxValue);
-            }
-            if (_previousMonth.IsValid)
-            {
-                // Calculate actual previous month calendar boundaries (not data boundaries)
-                var currentMonthStart = new DateTime(_lastMonthYear, _lastMonth, 1);
-                var prevMonthStart = currentMonthStart.AddMonths(-1);
-                ContributePeriod(_previousMonth, PeriodType.Monthly, false, prevMonthStart, currentMonthStart);
+                if (_currentWeek.IsValid)
+                {
+                    ContributePeriod(_currentWeek, PeriodType.Weekly, true, _currentWeek.StartTime, DateTime.MaxValue);
+                }
+                if (_previousWeek.IsValid)
+                {
+                    ContributePeriod(_previousWeek, PeriodType.Weekly, false, _previousWeek.StartTime, _currentWeek.IsValid ? _currentWeek.StartTime : DateTime.MaxValue);
+                }
             }
 
-            // Contribute Quarterly data
-            if (_currentQuarter.IsValid)
+            // Contribute Monday data - only if chart has <= 1 day candles (need to see Monday specifically)
+            if (candleDuration <= DailyThreshold)
             {
-                // Current quarter is still forming, use MaxValue to indicate ongoing
-                var quarterStart = GetQuarterStart(_lastQuarterYear, _lastQuarter);
-                ContributePeriod(_currentQuarter, PeriodType.Quarterly, true, quarterStart, DateTime.MaxValue);
-            }
-            if (_previousQuarter.IsValid)
-            {
-                // Calculate actual previous quarter calendar boundaries
-                var currentQuarterStart = GetQuarterStart(_lastQuarterYear, _lastQuarter);
-                var prevQuarterStart = currentQuarterStart.AddMonths(-3);
-                ContributePeriod(_previousQuarter, PeriodType.Quarterly, false, prevQuarterStart, currentQuarterStart);
+                if (_currentMonday.IsValid)
+                {
+                    ContributePeriod(_currentMonday, PeriodType.Monday, true, _currentMonday.StartTime, _currentMonday.StartTime.Date.AddDays(1).AddHours(23));
+                }
+                if (_previousMonday.IsValid)
+                {
+                    ContributePeriod(_previousMonday, PeriodType.Monday, false, _previousMonday.StartTime, _previousMonday.StartTime.Date.AddDays(1).AddHours(23));
+                }
             }
 
-            // Contribute Yearly data
-            if (_currentYear.IsValid)
+            // Contribute Monthly data - only if chart has <= 30 day candles
+            if (candleDuration <= MonthlyThreshold)
             {
-                // Current year is still forming, use MaxValue to indicate ongoing
-                var yearStart = new DateTime(_lastYear, 1, 1);
-                ContributePeriod(_currentYear, PeriodType.Yearly, true, yearStart, DateTime.MaxValue);
+                if (_currentMonth.IsValid)
+                {
+                    ContributePeriod(_currentMonth, PeriodType.Monthly, true, _currentMonth.StartTime, DateTime.MaxValue);
+                }
+                if (_previousMonth.IsValid)
+                {
+                    ContributePeriod(_previousMonth, PeriodType.Monthly, false, _previousMonth.StartTime, _currentMonth.IsValid ? _currentMonth.StartTime : DateTime.MaxValue);
+                }
             }
-            if (_previousYear.IsValid)
+
+            // Contribute Quarterly data - only if chart has <= 90 day candles
+            if (candleDuration <= QuarterlyThreshold)
             {
-                // Calculate actual previous year calendar boundaries
-                var prevYearStart = new DateTime(_lastYear - 1, 1, 1);
-                var currentYearStart = new DateTime(_lastYear, 1, 1);
-                ContributePeriod(_previousYear, PeriodType.Yearly, false, prevYearStart, currentYearStart);
+                if (_currentQuarter.IsValid)
+                {
+                    ContributePeriod(_currentQuarter, PeriodType.Quarterly, true, _currentQuarter.StartTime, DateTime.MaxValue);
+                }
+                if (_previousQuarter.IsValid)
+                {
+                    ContributePeriod(_previousQuarter, PeriodType.Quarterly, false, _previousQuarter.StartTime, _currentQuarter.IsValid ? _currentQuarter.StartTime : DateTime.MaxValue);
+                }
+            }
+
+            // Contribute Yearly data - only if chart has <= 365 day candles
+            if (candleDuration <= YearlyThreshold)
+            {
+                if (_currentYear.IsValid)
+                {
+                    ContributePeriod(_currentYear, PeriodType.Yearly, true, _currentYear.StartTime, DateTime.MaxValue);
+                }
+                if (_previousYear.IsValid)
+                {
+                    ContributePeriod(_previousYear, PeriodType.Yearly, false, _previousYear.StartTime, _currentYear.IsValid ? _currentYear.StartTime : DateTime.MaxValue);
+                }
             }
         }
 
@@ -913,6 +923,79 @@ namespace sadnerd.io.ATAS.KeyLevels
         private PeriodPoi? GetAggregatedPoi(PeriodType periodType, bool isCurrent)
         {
             return _dataStore?.GetPeriodPoi(periodType, isCurrent);
+        }
+
+        /// <summary>
+        /// Logs the data store contents every 15 seconds for diagnostics.
+        /// </summary>
+        private void LogDataStoreContentsIfDue()
+        {
+            var now = DateTime.UtcNow;
+            if ((now - _lastDiagnosticLogTime).TotalSeconds < DiagnosticLogIntervalSeconds)
+                return;
+            
+            _lastDiagnosticLogTime = now;
+            
+            if (_dataStore == null)
+            {
+                this.LogInfo("[DIAG] DataStore is NULL");
+                return;
+            }
+            
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"[DIAG] DataStore for {_dataStore.Symbol} at {now:HH:mm:ss}:");
+            
+            foreach (var periodType in Enum.GetValues<PeriodType>())
+            {
+                foreach (var isCurrent in new[] { true, false })
+                {
+                    var poi = _dataStore.GetPeriodPoi(periodType, isCurrent);
+                    if (poi != null)
+                    {
+                        var label = isCurrent ? "Current" : "Previous";
+                        var periodEnd = poi.PeriodEnd == DateTime.MaxValue ? "ongoing" : poi.PeriodEnd.ToString("yyyy-MM-dd HH:mm");
+                        sb.AppendLine($"  {periodType} ({label}): O={poi.Open} H={poi.High} L={poi.Low} C={poi.Close}");
+                        sb.AppendLine($"    Period: {poi.PeriodStart:yyyy-MM-dd HH:mm} to {periodEnd}");
+                        sb.AppendLine($"    Complete: {poi.HasCompleteCoverage()}");
+                        
+                        // Log covered ranges
+                        var ranges = poi.CoveredRanges;
+                        sb.AppendLine($"    CoveredRanges ({ranges.Count}):");
+                        foreach (var range in ranges.Take(3)) // Limit to first 3
+                        {
+                            sb.AppendLine($"      {range.Start:yyyy-MM-dd HH:mm} to {range.End:yyyy-MM-dd HH:mm}");
+                        }
+                        if (ranges.Count > 3)
+                            sb.AppendLine($"      ... and {ranges.Count - 3} more");
+                        
+                        // Log gaps if incomplete
+                        if (!poi.HasCompleteCoverage())
+                        {
+                            var gaps = poi.GetGaps().Take(3).ToList();
+                            sb.AppendLine($"    Gaps ({gaps.Count}):");
+                            foreach (var gap in gaps)
+                            {
+                                sb.AppendLine($"      {gap.Start:yyyy-MM-dd HH:mm} to {gap.End:yyyy-MM-dd HH:mm}");
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Add session and 4H diagnostic info
+            sb.AppendLine();
+            sb.AppendLine($"[SESSION DEBUG]");
+            sb.AppendLine($"  _sessionStartTime: {_sessionStartTime:yyyy-MM-dd HH:mm}");
+            sb.AppendLine($"  _last4hPeriodStart: {_last4hPeriodStart:yyyy-MM-dd HH:mm}");
+            sb.AppendLine($"  Current4H.StartTime: {(_current4h.IsValid ? _current4h.StartTime.ToString("yyyy-MM-dd HH:mm") : "invalid")}");
+            sb.AppendLine($"  Previous4H.StartTime: {(_previous4h.IsValid ? _previous4h.StartTime.ToString("yyyy-MM-dd HH:mm") : "invalid")}");
+            if (CurrentBar > 0)
+            {
+                var lastCandle = GetCandle(CurrentBar - 1);
+                sb.AppendLine($"  Last candle time: {lastCandle.Time:yyyy-MM-dd HH:mm}");
+            }
+            
+            this.LogInfo(sb.ToString());
         }
 
         private int GetCandleDurationMinutes()
@@ -1035,6 +1118,9 @@ namespace sadnerd.io.ATAS.KeyLevels
 
             var region = Container.Region;
             var font = new RenderFont("Arial", FontSize);
+            
+            // Log data store contents every 15 seconds for diagnostics
+            LogDataStoreContentsIfDue();
             
             // Collect all levels to draw
             var levels = GetDynamicLevels();
