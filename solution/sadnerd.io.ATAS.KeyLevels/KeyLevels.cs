@@ -259,7 +259,7 @@ namespace sadnerd.io.ATAS.KeyLevels
         private string _contributorId = Guid.NewGuid().ToString();
         private DateTime _lastContributionTime = DateTime.MinValue;
         private DateTime _lastDiagnosticLogTime = DateTime.MinValue;
-        private const int DiagnosticLogIntervalSeconds = 15;
+        private const int DiagnosticLogIntervalSeconds = 600;
 
         #endregion
 
@@ -875,18 +875,6 @@ namespace sadnerd.io.ATAS.KeyLevels
             _dataStore.ContributePeriodData(periodType, isCurrent, periodStart, periodEnd, timeRange);
         }
 
-        private DateTime GetDayEnd(DateTime dayStart)
-        {
-            // TODO: Ideally use session end time, for now assume next day
-            return dayStart.Date.AddDays(1);
-        }
-
-        private DateTime GetQuarterStart(int year, int quarter)
-        {
-            var month = (quarter - 1) * 3 + 1;
-            return new DateTime(year, month, 1);
-        }
-
         /// <summary>
         /// Checks if we have adequate data coverage for a given period/level type.
         /// For High/Low/Mid levels, we need complete coverage of the period.
@@ -915,14 +903,6 @@ namespace sadnerd.io.ATAS.KeyLevels
                 // For Open we just need coverage at the start of the period
                 return poi.HasCoverageAt(poi.PeriodStart);
             }
-        }
-
-        /// <summary>
-        /// Gets the aggregated POI for a period type, if available.
-        /// </summary>
-        private PeriodPoi? GetAggregatedPoi(PeriodType periodType, bool isCurrent)
-        {
-            return _dataStore?.GetPeriodPoi(periodType, isCurrent);
         }
 
         /// <summary>
