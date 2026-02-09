@@ -1396,145 +1396,163 @@ namespace sadnerd.io.ATAS.KeyLevels
         private List<KeyLevel> GetDynamicLevels()
         {
             var levels = new List<KeyLevel>();
+            
+            // Query POI from singleton data store
+            if (_dataStore == null)
+                return levels;
+
+            // Helper to get POI
+            PeriodPoi? GetPoi(PeriodType type, bool isCurrent) => _dataStore.GetPeriodPoi(type, isCurrent);
 
             // Previous 4H High/Low - require complete coverage
-            if (_show4hHighLow && _previous4h.IsValid && HasAdequateCoverage(PeriodType.FourHour, false, requireComplete: true))
+            var prev4h = GetPoi(PeriodType.FourHour, false);
+            if (_show4hHighLow && prev4h != null && prev4h.HasCompleteCoverage())
             {
-                levels.Add(new KeyLevel(_previous4h.High, _useShortLabels ? "P4HH" : "Prev 4H High", _4hColor, _previous4h.HighTime, _previous4h.HighBar));
-                levels.Add(new KeyLevel(_previous4h.Low, _useShortLabels ? "P4HL" : "Prev 4H Low", _4hColor, _previous4h.LowTime, _previous4h.LowBar));
+                levels.Add(new KeyLevel(prev4h.High, _useShortLabels ? "P4HH" : "Prev 4H High", _4hColor, prev4h.PeriodStart, 0));
+                levels.Add(new KeyLevel(prev4h.Low, _useShortLabels ? "P4HL" : "Prev 4H Low", _4hColor, prev4h.PeriodStart, 0));
             }
 
             // Current 4H Open - just need period start
-            if (_show4hOpen && _current4h.IsValid && HasAdequateCoverage(PeriodType.FourHour, true, requireComplete: false))
+            var curr4h = GetPoi(PeriodType.FourHour, true);
+            if (_show4hOpen && curr4h != null && curr4h.HasCoverageAt(curr4h.PeriodStart))
             {
-                levels.Add(new KeyLevel(_current4h.Open, _useShortLabels ? "4HO" : "4H Open", _4hColor, _current4h.StartTime, _current4h.StartBar));
+                levels.Add(new KeyLevel(curr4h.Open, _useShortLabels ? "4HO" : "4H Open", _4hColor, curr4h.PeriodStart, 0));
             }
 
             // Previous 4H Mid - require complete coverage
-            if (_show4hMid && _previous4h.IsValid && HasAdequateCoverage(PeriodType.FourHour, false, requireComplete: true))
+            if (_show4hMid && prev4h != null && prev4h.HasCompleteCoverage())
             {
-                levels.Add(new KeyLevel(_previous4h.Mid, _useShortLabels ? "P4HM" : "Prev 4H Mid", _4hColor, _previous4h.StartTime, _previous4h.StartBar));
+                levels.Add(new KeyLevel(prev4h.Mid, _useShortLabels ? "P4HM" : "Prev 4H Mid", _4hColor, prev4h.PeriodStart, 0));
             }
 
             // Daily Open - just need period start
-            if (_showDailyOpen && _currentDay.IsValid && HasAdequateCoverage(PeriodType.Daily, true, requireComplete: false))
+            var currDay = GetPoi(PeriodType.Daily, true);
+            if (_showDailyOpen && currDay != null && currDay.HasCoverageAt(currDay.PeriodStart))
             {
-                levels.Add(new KeyLevel(_currentDay.Open, _useShortLabels ? "DO" : "Day Open", _dailyColor, _currentDay.StartTime, _currentDay.StartBar));
+                levels.Add(new KeyLevel(currDay.Open, _useShortLabels ? "DO" : "Day Open", _dailyColor, currDay.PeriodStart, 0));
             }
 
             // Previous Day High/Low - require complete coverage
-            if (_showPrevDayHighLow && _previousDay.IsValid && HasAdequateCoverage(PeriodType.Daily, false, requireComplete: true))
+            var prevDay = GetPoi(PeriodType.Daily, false);
+            if (_showPrevDayHighLow && prevDay != null && prevDay.HasCompleteCoverage())
             {
-                levels.Add(new KeyLevel(_previousDay.High, _useShortLabels ? "PDH" : "Prev Day High", _dailyColor, _previousDay.HighTime, _previousDay.HighBar));
-                levels.Add(new KeyLevel(_previousDay.Low, _useShortLabels ? "PDL" : "Prev Day Low", _dailyColor, _previousDay.LowTime, _previousDay.LowBar));
+                levels.Add(new KeyLevel(prevDay.High, _useShortLabels ? "PDH" : "Prev Day High", _dailyColor, prevDay.PeriodStart, 0));
+                levels.Add(new KeyLevel(prevDay.Low, _useShortLabels ? "PDL" : "Prev Day Low", _dailyColor, prevDay.PeriodStart, 0));
             }
 
             // Previous Day Mid - require complete coverage
-            if (_showPrevDayMid && _previousDay.IsValid && HasAdequateCoverage(PeriodType.Daily, false, requireComplete: true))
+            if (_showPrevDayMid && prevDay != null && prevDay.HasCompleteCoverage())
             {
-                levels.Add(new KeyLevel(_previousDay.Mid, _useShortLabels ? "PDM" : "Prev Day Mid", _dailyColor, _previousDay.StartTime, _previousDay.StartBar));
+                levels.Add(new KeyLevel(prevDay.Mid, _useShortLabels ? "PDM" : "Prev Day Mid", _dailyColor, prevDay.PeriodStart, 0));
             }
 
-            // Monday High/Low - prefer current week's Monday, fallback to previous (require complete coverage)
-            bool hasCurrentMondayCoverage = HasAdequateCoverage(PeriodType.Monday, true, requireComplete: true);
-            bool hasPreviousMondayCoverage = HasAdequateCoverage(PeriodType.Monday, false, requireComplete: true);
-            bool hasMondayCoverage = (hasCurrentMondayCoverage && _currentMonday.IsValid) || (hasPreviousMondayCoverage && _previousMonday.IsValid);
-            bool isPrevMonday = !hasCurrentMondayCoverage || !_currentMonday.IsValid;
-            var usedMondayRange = isPrevMonday ? _previousMonday : _currentMonday;
+            // Monday High/Low - prefer current week's Monday, fallback to previous
+            var currMonday = GetPoi(PeriodType.Monday, true);
+            var prevMonday = GetPoi(PeriodType.Monday, false);
+            var usedMonday = (currMonday != null && currMonday.HasCompleteCoverage()) ? currMonday : prevMonday;
+            bool isPrevMonday = usedMonday == prevMonday;
             
-            if (_showMondayHighLow && hasMondayCoverage)
+            if (_showMondayHighLow && usedMonday != null && usedMonday.HasCompleteCoverage())
             {
-                levels.Add(new KeyLevel(usedMondayRange.High, _useShortLabels ? (isPrevMonday ? "PMDAYH" : "MDAYH") : (isPrevMonday ? "Prev Mon High" : "Mon High"), _mondayColor, usedMondayRange.HighTime, usedMondayRange.HighBar));
-                levels.Add(new KeyLevel(usedMondayRange.Low, _useShortLabels ? (isPrevMonday ? "PMDAYL" : "MDAYL") : (isPrevMonday ? "Prev Mon Low" : "Mon Low"), _mondayColor, usedMondayRange.LowTime, usedMondayRange.LowBar));
+                levels.Add(new KeyLevel(usedMonday.High, _useShortLabels ? (isPrevMonday ? "PMDAYH" : "MDAYH") : (isPrevMonday ? "Prev Mon High" : "Mon High"), _mondayColor, usedMonday.PeriodStart, 0));
+                levels.Add(new KeyLevel(usedMonday.Low, _useShortLabels ? (isPrevMonday ? "PMDAYL" : "MDAYL") : (isPrevMonday ? "Prev Mon Low" : "Mon Low"), _mondayColor, usedMonday.PeriodStart, 0));
             }
 
-            // Monday Mid (include date)
-            if (_showMondayMid && hasMondayCoverage)
+            // Monday Mid
+            if (_showMondayMid && usedMonday != null && usedMonday.HasCompleteCoverage())
             {
-                levels.Add(new KeyLevel(usedMondayRange.Mid, _useShortLabels ? (isPrevMonday ? "PMDAYM" : "MDAYM") : (isPrevMonday ? "Prev Mon Mid" : "Mon Mid"), _mondayColor, usedMondayRange.StartTime, usedMondayRange.StartBar));
+                levels.Add(new KeyLevel(usedMonday.Mid, _useShortLabels ? (isPrevMonday ? "PMDAYM" : "MDAYM") : (isPrevMonday ? "Prev Mon Mid" : "Mon Mid"), _mondayColor, usedMonday.PeriodStart, 0));
             }
 
             // Quarterly Open - just need period start
-            if (_showQuarterlyOpen && _currentQuarter.IsValid && HasAdequateCoverage(PeriodType.Quarterly, true, requireComplete: false))
+            var currQuarter = GetPoi(PeriodType.Quarterly, true);
+            if (_showQuarterlyOpen && currQuarter != null && currQuarter.HasCoverageAt(currQuarter.PeriodStart))
             {
-                levels.Add(new KeyLevel(_currentQuarter.Open, _useShortLabels ? "QO" : "Quarter Open", _quarterlyColor, _currentQuarter.StartTime, _currentQuarter.StartBar));
+                levels.Add(new KeyLevel(currQuarter.Open, _useShortLabels ? "QO" : "Quarter Open", _quarterlyColor, currQuarter.PeriodStart, 0));
             }
 
             // Previous Quarter High/Low - require complete coverage
-            if (_showPrevQuarterHighLow && _previousQuarter.IsValid && HasAdequateCoverage(PeriodType.Quarterly, false, requireComplete: true))
+            var prevQuarter = GetPoi(PeriodType.Quarterly, false);
+            if (_showPrevQuarterHighLow && prevQuarter != null && prevQuarter.HasCompleteCoverage())
             {
-                levels.Add(new KeyLevel(_previousQuarter.High, _useShortLabels ? "PQH" : "Prev Quarter High", _quarterlyColor, _previousQuarter.HighTime, _previousQuarter.HighBar));
-                levels.Add(new KeyLevel(_previousQuarter.Low, _useShortLabels ? "PQL" : "Prev Quarter Low", _quarterlyColor, _previousQuarter.LowTime, _previousQuarter.LowBar));
+                levels.Add(new KeyLevel(prevQuarter.High, _useShortLabels ? "PQH" : "Prev Quarter High", _quarterlyColor, prevQuarter.PeriodStart, 0));
+                levels.Add(new KeyLevel(prevQuarter.Low, _useShortLabels ? "PQL" : "Prev Quarter Low", _quarterlyColor, prevQuarter.PeriodStart, 0));
             }
 
             // Previous Quarter Mid - require complete coverage
-            if (_showPrevQuarterMid && _previousQuarter.IsValid && HasAdequateCoverage(PeriodType.Quarterly, false, requireComplete: true))
+            if (_showPrevQuarterMid && prevQuarter != null && prevQuarter.HasCompleteCoverage())
             {
-                levels.Add(new KeyLevel(_previousQuarter.Mid, _useShortLabels ? "PQM" : "Prev Quarter Mid", _quarterlyColor, _previousQuarter.StartTime, _previousQuarter.StartBar));
+                levels.Add(new KeyLevel(prevQuarter.Mid, _useShortLabels ? "PQM" : "Prev Quarter Mid", _quarterlyColor, prevQuarter.PeriodStart, 0));
             }
 
             // Previous Year High/Low - require complete coverage
-            if (_showPrevYearHighLow && _previousYear.IsValid && HasAdequateCoverage(PeriodType.Yearly, false, requireComplete: true))
+            var prevYear = GetPoi(PeriodType.Yearly, false);
+            if (_showPrevYearHighLow && prevYear != null && prevYear.HasCompleteCoverage())
             {
-                levels.Add(new KeyLevel(_previousYear.High, _useShortLabels ? "PYH" : "Prev Year High", _yearlyColor, _previousYear.HighTime, _previousYear.HighBar));
-                levels.Add(new KeyLevel(_previousYear.Low, _useShortLabels ? "PYL" : "Prev Year Low", _yearlyColor, _previousYear.LowTime, _previousYear.LowBar));
+                levels.Add(new KeyLevel(prevYear.High, _useShortLabels ? "PYH" : "Prev Year High", _yearlyColor, prevYear.PeriodStart, 0));
+                levels.Add(new KeyLevel(prevYear.Low, _useShortLabels ? "PYL" : "Prev Year Low", _yearlyColor, prevYear.PeriodStart, 0));
             }
 
             // Previous Year Mid - require complete coverage
-            if (_showPrevYearMid && _previousYear.IsValid && HasAdequateCoverage(PeriodType.Yearly, false, requireComplete: true))
+            if (_showPrevYearMid && prevYear != null && prevYear.HasCompleteCoverage())
             {
-                levels.Add(new KeyLevel(_previousYear.Mid, _useShortLabels ? "PYM" : "Prev Year Mid", _yearlyColor, _previousYear.StartTime, _previousYear.StartBar));
+                levels.Add(new KeyLevel(prevYear.Mid, _useShortLabels ? "PYM" : "Prev Year Mid", _yearlyColor, prevYear.PeriodStart, 0));
             }
 
-            // Current Year High/Low - require complete coverage (all data from year start to now)
-            if (_showCurrentYearHighLow && _currentYear.IsValid && HasAdequateCoverage(PeriodType.Yearly, true, requireComplete: true))
+            // Current Year High/Low - require complete coverage
+            var currYear = GetPoi(PeriodType.Yearly, true);
+            if (_showCurrentYearHighLow && currYear != null && currYear.HasCompleteCoverage())
             {
-                levels.Add(new KeyLevel(_currentYear.High, _useShortLabels ? "CYH" : "Year High", _yearlyColor, _currentYear.HighTime, _currentYear.HighBar));
-                levels.Add(new KeyLevel(_currentYear.Low, _useShortLabels ? "CYL" : "Year Low", _yearlyColor, _currentYear.LowTime, _currentYear.LowBar));
+                levels.Add(new KeyLevel(currYear.High, _useShortLabels ? "CYH" : "Year High", _yearlyColor, currYear.PeriodStart, 0));
+                levels.Add(new KeyLevel(currYear.Low, _useShortLabels ? "CYL" : "Year Low", _yearlyColor, currYear.PeriodStart, 0));
             }
 
             // Current Year Mid - require complete coverage
-            if (_showCurrentYearMid && _currentYear.IsValid && HasAdequateCoverage(PeriodType.Yearly, true, requireComplete: true))
+            if (_showCurrentYearMid && currYear != null && currYear.HasCompleteCoverage())
             {
-                levels.Add(new KeyLevel(_currentYear.Mid, _useShortLabels ? "CYM" : "Year Mid", _yearlyColor, _currentYear.StartTime, _currentYear.StartBar));
+                levels.Add(new KeyLevel(currYear.Mid, _useShortLabels ? "CYM" : "Year Mid", _yearlyColor, currYear.PeriodStart, 0));
             }
 
             // Week Open - just need period start
-            if (_showWeekOpen && _currentWeek.IsValid && HasAdequateCoverage(PeriodType.Weekly, true, requireComplete: false))
+            var currWeek = GetPoi(PeriodType.Weekly, true);
+            if (_showWeekOpen && currWeek != null && currWeek.HasCoverageAt(currWeek.PeriodStart))
             {
-                levels.Add(new KeyLevel(_currentWeek.Open, _useShortLabels ? "WO" : "Week Open", _weeklyColor, _currentWeek.StartTime, _currentWeek.StartBar));
+                levels.Add(new KeyLevel(currWeek.Open, _useShortLabels ? "WO" : "Week Open", _weeklyColor, currWeek.PeriodStart, 0));
             }
 
             // Previous Week High/Low - require complete coverage
-            if (_showPrevWeekHighLow && _previousWeek.IsValid && HasAdequateCoverage(PeriodType.Weekly, false, requireComplete: true))
+            var prevWeek = GetPoi(PeriodType.Weekly, false);
+            if (_showPrevWeekHighLow && prevWeek != null && prevWeek.HasCompleteCoverage())
             {
-                levels.Add(new KeyLevel(_previousWeek.High, _useShortLabels ? "PWH" : "Prev Week High", _weeklyColor, _previousWeek.HighTime, _previousWeek.HighBar));
-                levels.Add(new KeyLevel(_previousWeek.Low, _useShortLabels ? "PWL" : "Prev Week Low", _weeklyColor, _previousWeek.LowTime, _previousWeek.LowBar));
+                levels.Add(new KeyLevel(prevWeek.High, _useShortLabels ? "PWH" : "Prev Week High", _weeklyColor, prevWeek.PeriodStart, 0));
+                levels.Add(new KeyLevel(prevWeek.Low, _useShortLabels ? "PWL" : "Prev Week Low", _weeklyColor, prevWeek.PeriodStart, 0));
             }
 
             // Previous Week Mid - require complete coverage
-            if (_showPrevWeekMid && _previousWeek.IsValid && HasAdequateCoverage(PeriodType.Weekly, false, requireComplete: true))
+            if (_showPrevWeekMid && prevWeek != null && prevWeek.HasCompleteCoverage())
             {
-                levels.Add(new KeyLevel(_previousWeek.Mid, _useShortLabels ? "PWM" : "Prev Week Mid", _weeklyColor, _previousWeek.StartTime, _previousWeek.StartBar));
+                levels.Add(new KeyLevel(prevWeek.Mid, _useShortLabels ? "PWM" : "Prev Week Mid", _weeklyColor, prevWeek.PeriodStart, 0));
             }
 
             // Month Open - just need period start
-            if (_showMonthOpen && _currentMonth.IsValid && HasAdequateCoverage(PeriodType.Monthly, true, requireComplete: false))
+            var currMonth = GetPoi(PeriodType.Monthly, true);
+            if (_showMonthOpen && currMonth != null && currMonth.HasCoverageAt(currMonth.PeriodStart))
             {
-                levels.Add(new KeyLevel(_currentMonth.Open, _useShortLabels ? "MO" : "Month Open", _monthlyColor, _currentMonth.StartTime, _currentMonth.StartBar));
+                levels.Add(new KeyLevel(currMonth.Open, _useShortLabels ? "MO" : "Month Open", _monthlyColor, currMonth.PeriodStart, 0));
             }
 
             // Previous Month High/Low - require complete coverage
-            if (_showPrevMonthHighLow && _previousMonth.IsValid && HasAdequateCoverage(PeriodType.Monthly, false, requireComplete: true))
+            var prevMonth = GetPoi(PeriodType.Monthly, false);
+            if (_showPrevMonthHighLow && prevMonth != null && prevMonth.HasCompleteCoverage())
             {
-                levels.Add(new KeyLevel(_previousMonth.High, _useShortLabels ? "PMH" : "Prev Month High", _monthlyColor, _previousMonth.HighTime, _previousMonth.HighBar));
-                levels.Add(new KeyLevel(_previousMonth.Low, _useShortLabels ? "PML" : "Prev Month Low", _monthlyColor, _previousMonth.LowTime, _previousMonth.LowBar));
+                levels.Add(new KeyLevel(prevMonth.High, _useShortLabels ? "PMH" : "Prev Month High", _monthlyColor, prevMonth.PeriodStart, 0));
+                levels.Add(new KeyLevel(prevMonth.Low, _useShortLabels ? "PML" : "Prev Month Low", _monthlyColor, prevMonth.PeriodStart, 0));
             }
 
             // Previous Month Mid - require complete coverage
-            if (_showPrevMonthMid && _previousMonth.IsValid && HasAdequateCoverage(PeriodType.Monthly, false, requireComplete: true))
+            if (_showPrevMonthMid && prevMonth != null && prevMonth.HasCompleteCoverage())
             {
-                levels.Add(new KeyLevel(_previousMonth.Mid, _useShortLabels ? "PMM" : "Prev Month Mid", _monthlyColor, _previousMonth.StartTime, _previousMonth.StartBar));
+                levels.Add(new KeyLevel(prevMonth.Mid, _useShortLabels ? "PMM" : "Prev Month Mid", _monthlyColor, prevMonth.PeriodStart, 0));
             }
 
             return levels;
