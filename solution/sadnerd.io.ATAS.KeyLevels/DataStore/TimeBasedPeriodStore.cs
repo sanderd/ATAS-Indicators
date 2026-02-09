@@ -1,18 +1,23 @@
 using System.Diagnostics;
+using System.Globalization;
 using Utils.Common.Logging;
 
 namespace sadnerd.io.ATAS.KeyLevels.DataStore;
 
 /// <summary>
-/// Time-based period store with O(1) ingest and lazy query.
-/// Owns period boundary calculation - no chart/session dependency beyond timezone.
+/// Time-based period store with O(1) ingest and session-aware period boundaries.
+/// Derives "trading day" from session start times and uses that to determine
+/// Weekly, Monthly, Quarterly, and Yearly boundaries.
 /// </summary>
 public class TimeBasedPeriodStore
 {
     private readonly int _timezoneOffset;
-    private DateTime _sessionStart;
     
-    // Current + Previous per period type (older periods evicted)
+    // Session tracking
+    private DateTime _currentSessionStart = DateTime.MinValue;
+    private DateTime _lastTradingDay = DateTime.MinValue;
+    
+    // Current + Previous per period type
     private readonly Dictionary<PeriodType, PeriodData?> _current = new();
     private readonly Dictionary<PeriodType, PeriodData?> _previous = new();
     
@@ -32,64 +37,206 @@ public class TimeBasedPeriodStore
     }
     
     /// <summary>
-    /// Set session start time (from chart info)
+    /// Derive the trading day from a session start time.
+    /// If session starts at or after noon, the majority of trading falls on the next calendar day.
     /// </summary>
-    public void SetSessionStart(DateTime sessionStart)
+    private static DateTime GetTradingDay(DateTime sessionStart)
     {
-        _sessionStart = sessionStart;
-        this.LogDebug($"Session start set to {sessionStart:HH:mm}");
+        return sessionStart.Hour >= 12
+            ? sessionStart.Date.AddDays(1)
+            : sessionStart.Date;
     }
     
     /// <summary>
-    /// O(1) ingest per candle - the hot path
+    /// Called when a new session is detected. Triggers period transitions
+    /// for Daily and any higher timeframe where the trading day crosses a boundary.
+    /// </summary>
+    public void SetSessionStart(DateTime sessionStart)
+    {
+        // Guard against duplicate session starts (IsNewSession can fire for multiple bars)
+        if (sessionStart == _currentSessionStart)
+        {
+            this.LogDebug($"SetSessionStart: duplicate {sessionStart:yyyy-MM-dd HH:mm}, skipping");
+            return;
+        }
+        
+        _currentSessionStart = sessionStart;
+        var tradingDay = GetTradingDay(sessionStart);
+        
+        // === Daily: every new session = new daily period ===
+        TransitionPeriod(PeriodType.Daily, sessionStart);
+        
+        // === 4H: reset 4H counting from new session start ===
+        // (4H transitions are handled in AddCandleToPeriod based on session start)
+        
+        if (_lastTradingDay != DateTime.MinValue)
+        {
+            // === Monday: transition when trading day is Monday, finalize when it's not ===
+            if (tradingDay.DayOfWeek == DayOfWeek.Monday && _lastTradingDay.DayOfWeek != DayOfWeek.Monday)
+            {
+                TransitionPeriod(PeriodType.Monday, sessionStart);
+            }
+            else if (tradingDay.DayOfWeek != DayOfWeek.Monday)
+            {
+                // Finalize Monday period when Tuesday (or later) arrives
+                var currentMonday = _current[PeriodType.Monday];
+                if (currentMonday != null && currentMonday.PeriodEnd == DateTime.MaxValue)
+                {
+                    currentMonday.PeriodEnd = sessionStart;
+                }
+            }
+            
+            // === Weekly: transition when ISO week changes ===
+            if (GetIsoWeek(tradingDay) != GetIsoWeek(_lastTradingDay) || tradingDay.Year != _lastTradingDay.Year)
+            {
+                TransitionPeriod(PeriodType.Weekly, sessionStart);
+            }
+            
+            // === Monthly: transition when month changes ===
+            if (tradingDay.Month != _lastTradingDay.Month || tradingDay.Year != _lastTradingDay.Year)
+            {
+                TransitionPeriod(PeriodType.Monthly, sessionStart);
+            }
+            
+            // === Quarterly: transition when quarter changes ===
+            if (GetQuarter(tradingDay) != GetQuarter(_lastTradingDay) || tradingDay.Year != _lastTradingDay.Year)
+            {
+                TransitionPeriod(PeriodType.Quarterly, sessionStart);
+            }
+            
+            // === Yearly: transition when year changes ===
+            if (tradingDay.Year != _lastTradingDay.Year)
+            {
+                TransitionPeriod(PeriodType.Yearly, sessionStart);
+            }
+        }
+        else
+        {
+            // First session ever — initialize all periods that don't exist yet
+            InitializePeriodIfNull(PeriodType.Monday, tradingDay.DayOfWeek == DayOfWeek.Monday ? sessionStart : DateTime.MinValue);
+            InitializePeriodIfNull(PeriodType.Weekly, sessionStart);
+            InitializePeriodIfNull(PeriodType.Monthly, sessionStart);
+            InitializePeriodIfNull(PeriodType.Quarterly, sessionStart);
+            InitializePeriodIfNull(PeriodType.Yearly, sessionStart);
+        }
+        
+        _lastTradingDay = tradingDay;
+        
+        this.LogDebug($"Session start: {sessionStart:yyyy-MM-dd HH:mm} → trading day: {tradingDay:yyyy-MM-dd} ({tradingDay.DayOfWeek})");
+    }
+    
+    /// <summary>
+    /// O(1) ingest per candle — the hot path.
     /// </summary>
     public void AddCandle(DateTime time, int bar, decimal open, decimal high, decimal low, decimal close)
     {
         _ingestStopwatch.Restart();
         
-        var adjustedTime = time.AddHours(_timezoneOffset);
+        // 4H uses session-aligned bounds
+        AddCandleTo4H(time, bar, open, high, low, close);
         
-        // Process each period type
-        AddCandleToPeriod(PeriodType.FourHour, adjustedTime, bar, open, high, low, close);
-        AddCandleToPeriod(PeriodType.Daily, adjustedTime, bar, open, high, low, close);
-        AddCandleToPeriod(PeriodType.Monday, adjustedTime, bar, open, high, low, close);
-        AddCandleToPeriod(PeriodType.Weekly, adjustedTime, bar, open, high, low, close);
-        AddCandleToPeriod(PeriodType.Monthly, adjustedTime, bar, open, high, low, close);
-        AddCandleToPeriod(PeriodType.Quarterly, adjustedTime, bar, open, high, low, close);
-        AddCandleToPeriod(PeriodType.Yearly, adjustedTime, bar, open, high, low, close);
+        // All other period types: just update current if it exists
+        UpdatePeriodIfActive(PeriodType.Daily, time, bar, open, high, low, close);
+        UpdatePeriodIfActive(PeriodType.Monday, time, bar, open, high, low, close);
+        UpdatePeriodIfActive(PeriodType.Weekly, time, bar, open, high, low, close);
+        UpdatePeriodIfActive(PeriodType.Monthly, time, bar, open, high, low, close);
+        UpdatePeriodIfActive(PeriodType.Quarterly, time, bar, open, high, low, close);
+        UpdatePeriodIfActive(PeriodType.Yearly, time, bar, open, high, low, close);
         
         _ingestStopwatch.Stop();
         _totalIngestTicks += _ingestStopwatch.ElapsedTicks;
         _totalIngestCalls++;
     }
     
-    private void AddCandleToPeriod(PeriodType type, DateTime time, int bar, decimal open, decimal high, decimal low, decimal close)
+    /// <summary>
+    /// Transition a period: current becomes previous, create new empty current.
+    /// The period start is set to the provided session start time.
+    /// </summary>
+    private void TransitionPeriod(PeriodType type, DateTime periodStart)
     {
-        var (periodStart, periodEnd) = GetPeriodBounds(type, time);
+        var current = _current[type];
+        if (current != null && current.IsInitialized)
+        {
+            // Finalize the period end if it wasn't already set (e.g., Monday is finalized by Tuesday)
+            if (current.PeriodEnd == DateTime.MaxValue)
+            {
+                current.PeriodEnd = periodStart;
+            }
+            _previous[type] = current;
+        }
         
-        // Skip if this period type doesn't apply (e.g., Monday only on Mondays)
-        if (periodStart == DateTime.MinValue)
+        // Create new current with session-start as the period boundary
+        _current[type] = new PeriodData(periodStart, DateTime.MaxValue);
+    }
+    
+    /// <summary>
+    /// Initialize a period only if it doesn't exist yet.
+    /// Used for first-ever session to bootstrap all period types.
+    /// </summary>
+    private void InitializePeriodIfNull(PeriodType type, DateTime periodStart)
+    {
+        if (_current[type] == null && periodStart != DateTime.MinValue)
+        {
+            _current[type] = new PeriodData(periodStart, DateTime.MaxValue);
+        }
+    }
+    
+    /// <summary>
+    /// Update an existing current period with new candle data.
+    /// If the period hasn't been initialized with data yet, initializes it.
+    /// </summary>
+    private void UpdatePeriodIfActive(PeriodType type, DateTime time, int bar, decimal open, decimal high, decimal low, decimal close)
+    {
+        var current = _current[type];
+        if (current == null)
             return;
         
-        var current = _current[type];
+        // Don't update periods past their end time (e.g., Monday after Tuesday starts)
+        if (current.PeriodEnd != DateTime.MaxValue && time >= current.PeriodEnd)
+            return;
         
-        // Check if we've transitioned to a new period
-        if (current == null || time >= current.PeriodEnd)
+        if (!current.IsInitialized)
         {
-            // Transition: current becomes previous
+            current.Initialize(time, bar, open, high, low, close);
+        }
+        else
+        {
+            current.Update(time, bar, high, low, close);
+        }
+    }
+    
+    /// <summary>
+    /// 4H periods subdivide the current session into 4-hour blocks.
+    /// Transitions happen within AddCandle, not in SetSessionStart.
+    /// </summary>
+    private void AddCandleTo4H(DateTime time, int bar, decimal open, decimal high, decimal low, decimal close)
+    {
+        if (_currentSessionStart == DateTime.MinValue)
+            return;
+        
+        var hoursSinceSession = (time - _currentSessionStart).TotalHours;
+        if (hoursSinceSession < 0) return; // candle before session start
+        
+        var periodIndex = (int)(hoursSinceSession / 4);
+        var periodStart = _currentSessionStart.AddHours(periodIndex * 4);
+        var periodEnd = periodStart.AddHours(4);
+        
+        var current = _current[PeriodType.FourHour];
+        
+        // Check if we've moved to a new 4H block
+        if (current == null || periodStart != current.PeriodStart)
+        {
             if (current != null && current.IsInitialized)
             {
-                _previous[type] = current;
+                _previous[PeriodType.FourHour] = current;
             }
             
-            // Create new current period
             current = new PeriodData(periodStart, periodEnd);
             current.Initialize(time, bar, open, high, low, close);
-            _current[type] = current;
+            _current[PeriodType.FourHour] = current;
         }
-        else if (time >= current.PeriodStart)
+        else
         {
-            // Update existing period
             current.Update(time, bar, high, low, close);
         }
     }
@@ -104,73 +251,14 @@ public class TimeBasedPeriodStore
     /// </summary>
     public PeriodData? GetPrevious(PeriodType type) => _previous[type];
     
-    /// <summary>
-    /// Calculate period boundaries for a given time
-    /// </summary>
-    private (DateTime start, DateTime end) GetPeriodBounds(PeriodType type, DateTime time)
+    private static int GetIsoWeek(DateTime date)
     {
-        return type switch
-        {
-            PeriodType.FourHour => GetFourHourBounds(time),
-            PeriodType.Daily => GetDailyBounds(time),
-            PeriodType.Monday => GetMondayBounds(time),
-            PeriodType.Weekly => GetWeeklyBounds(time),
-            PeriodType.Monthly => GetMonthlyBounds(time),
-            PeriodType.Quarterly => GetQuarterlyBounds(time),
-            PeriodType.Yearly => GetYearlyBounds(time),
-            _ => (DateTime.MinValue, DateTime.MinValue)
-        };
+        return ISOWeek.GetWeekOfYear(date);
     }
     
-    private (DateTime start, DateTime end) GetFourHourBounds(DateTime time)
+    private static int GetQuarter(DateTime date)
     {
-        // Session-aligned: 4H periods from session start
-        var sessionDate = _sessionStart != DateTime.MinValue ? _sessionStart : time.Date;
-        var hoursSinceSession = (time - sessionDate).TotalHours;
-        var periodIndex = (int)(hoursSinceSession / 4);
-        var start = sessionDate.AddHours(periodIndex * 4);
-        return (start, start.AddHours(4));
-    }
-    
-    private (DateTime start, DateTime end) GetDailyBounds(DateTime time)
-    {
-        var start = time.Date;
-        return (start, start.AddDays(1));
-    }
-    
-    private (DateTime start, DateTime end) GetMondayBounds(DateTime time)
-    {
-        if (time.DayOfWeek != DayOfWeek.Monday)
-            return (DateTime.MinValue, DateTime.MinValue);
-        
-        var start = time.Date;
-        return (start, start.AddDays(1));
-    }
-    
-    private (DateTime start, DateTime end) GetWeeklyBounds(DateTime time)
-    {
-        var daysSinceMonday = ((int)time.DayOfWeek + 6) % 7;
-        var start = time.Date.AddDays(-daysSinceMonday);
-        return (start, start.AddDays(7));
-    }
-    
-    private (DateTime start, DateTime end) GetMonthlyBounds(DateTime time)
-    {
-        var start = new DateTime(time.Year, time.Month, 1);
-        return (start, start.AddMonths(1));
-    }
-    
-    private (DateTime start, DateTime end) GetQuarterlyBounds(DateTime time)
-    {
-        var quarter = (time.Month - 1) / 3;
-        var start = new DateTime(time.Year, quarter * 3 + 1, 1);
-        return (start, start.AddMonths(3));
-    }
-    
-    private (DateTime start, DateTime end) GetYearlyBounds(DateTime time)
-    {
-        var start = new DateTime(time.Year, 1, 1);
-        return (start, start.AddYears(1));
+        return (date.Month - 1) / 3 + 1;
     }
     
     /// <summary>
@@ -181,7 +269,7 @@ public class TimeBasedPeriodStore
         if (_totalIngestCalls == 0) return;
         
         var avgMicroseconds = (_totalIngestTicks * 1_000_000.0) / (Stopwatch.Frequency * _totalIngestCalls);
-        source.LogDebug($"Store: {_totalIngestCalls} ingests, avg {avgMicroseconds:F2}µs/candle");
+        source.LogDebug($"Store: {_totalIngestCalls} ingests, avg {avgMicroseconds:F2}µs/candle, session={_currentSessionStart:HH:mm}, tradingDay={_lastTradingDay:yyyy-MM-dd}");
     }
     
     /// <summary>
@@ -194,6 +282,8 @@ public class TimeBasedPeriodStore
             _current[type] = null;
             _previous[type] = null;
         }
+        _currentSessionStart = DateTime.MinValue;
+        _lastTradingDay = DateTime.MinValue;
         _totalIngestCalls = 0;
         _totalIngestTicks = 0;
         this.LogDebug("Store reset");

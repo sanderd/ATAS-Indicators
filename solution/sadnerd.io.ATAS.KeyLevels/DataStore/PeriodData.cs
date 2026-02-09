@@ -20,7 +20,7 @@ public enum PeriodType
 public class PeriodData
 {
     public DateTime PeriodStart { get; }
-    public DateTime PeriodEnd { get; }
+    public DateTime PeriodEnd { get; set; }
     
     public decimal Open { get; private set; }
     public decimal High { get; private set; }

@@ -81,61 +81,6 @@ namespace sadnerd.io.ATAS.KeyLevels
         }
     }
 
-    /// <summary>
-    /// Tracks high, low, open, close for a time period
-    /// </summary>
-    internal class PeriodRange
-    {
-        public decimal Open { get; set; }
-        public decimal High { get; set; }
-        public decimal Low { get; set; }
-        public decimal Close { get; set; }
-        public decimal Mid => Low + (High - Low) / 2;
-        public DateTime StartTime { get; set; }
-        public DateTime HighTime { get; set; }  // When the high was hit
-        public DateTime LowTime { get; set; }   // When the low was hit
-        public int StartBar { get; set; } = -1;
-        public int HighBar { get; set; } = -1;  // Bar where the high was hit
-        public int LowBar { get; set; } = -1;   // Bar where the low was hit
-        public bool IsValid => StartBar >= 0;
-
-        public void Reset()
-        {
-            Open = High = Low = Close = 0;
-            StartBar = HighBar = LowBar = -1;
-        }
-
-        public void Initialize(IndicatorCandle candle, int bar)
-        {
-            StartBar = bar;
-            HighBar = bar;
-            LowBar = bar;
-            StartTime = candle.Time;
-            Open = candle.Open;
-            High = candle.High;
-            Low = candle.Low;
-            Close = candle.Close;
-            HighTime = candle.Time;
-            LowTime = candle.Time;
-        }
-
-        public void Update(IndicatorCandle candle, int bar)
-        {
-            if (candle.High > High)
-            {
-                High = candle.High;
-                HighTime = candle.Time;
-                HighBar = bar;
-            }
-            if (candle.Low < Low)
-            {
-                Low = candle.Low;
-                LowTime = candle.Time;
-                LowBar = bar;
-            }
-            Close = candle.Close;
-        }
-    }
 
     [DisplayName("Key Levels")]
     [Display(Name = "Key Levels", Description = "Displays key price levels on the chart")]
@@ -210,45 +155,7 @@ namespace sadnerd.io.ATAS.KeyLevels
 
         #region Fields - Period Tracking
 
-        // 4-hour periods
-        private readonly PeriodRange _current4h = new();
-        private readonly PeriodRange _previous4h = new();
-        private DateTime _last4hPeriodStart;
-        private DateTime _sessionStartTime; // Track session start for 4H alignment
-
-        // Daily periods
-        private readonly PeriodRange _currentDay = new();
-        private readonly PeriodRange _previousDay = new();
-        private DateTime _lastDayStart;
-
-        // Monday (weekly)
-        private readonly PeriodRange _currentMonday = new();
-        private readonly PeriodRange _previousMonday = new();
-        private DateTime _lastMondayStart;
-
-        // Quarterly
-        private readonly PeriodRange _currentQuarter = new();
-        private readonly PeriodRange _previousQuarter = new();
-        private int _lastQuarter = -1;
-        private int _lastQuarterYear = -1;
-
-        // Yearly
-        private readonly PeriodRange _currentYear = new();
-        private readonly PeriodRange _previousYear = new();
-        private int _lastYear = -1;
-
-        // Weekly (full week)
-        private readonly PeriodRange _currentWeek = new();
-        private readonly PeriodRange _previousWeek = new();
-        private DateTime _lastWeekStart;
-
-        // Monthly
-        private readonly PeriodRange _currentMonth = new();
-        private readonly PeriodRange _previousMonth = new();
-        private int _lastMonth = -1;
-        private int _lastMonthYear = -1;
-
-        // NEW: Time-based period store for O(1) ingest
+        // Time-based period store for O(1) ingest
         private TimeBasedPeriodStore? _periodStore;
 
         #endregion
@@ -259,7 +166,7 @@ namespace sadnerd.io.ATAS.KeyLevels
         private string _contributorId = Guid.NewGuid().ToString();
         private DateTime _lastContributionTime = DateTime.MinValue;
         private DateTime _lastDiagnosticLogTime = DateTime.MinValue;
-        private const int DiagnosticLogIntervalSeconds = 600;
+        private const int DiagnosticLogIntervalSeconds = 15;
 
         #endregion
 
@@ -743,132 +650,42 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
         }
 
-        /// <summary>
-        /// Contributes current period data to the aggregation layer.
-        /// Only contributes data for periods where this chart has sufficient resolution.
-        /// </summary>
         private void ContributeDataToAggregator(IndicatorCandle latestCandle)
         {
-            if (_dataStore == null)
+            if (_dataStore == null || _periodStore == null)
                 return;
 
-            var now = latestCandle.Time;
-            var candleDuration = GetCandleDurationMinutes();
-            
-            // Resolution thresholds (in minutes) - only contribute if candle duration is <= period duration
-            // A chart can accurately track a period when each candle represents <= one period
-            const int FourHourThreshold = 240;      // 4 hours
-            const int DailyThreshold = 1440;        // 24 hours
-            const int WeeklyThreshold = 10080;      // 7 days
-            const int MonthlyThreshold = 43200;     // ~30 days
-            const int QuarterlyThreshold = 129600;  // ~90 days
-            const int YearlyThreshold = 525600;     // ~365 days
-            
-            // Contribute Daily data (daily charts qualify since 1 candle = 1 day)
-            if (candleDuration <= DailyThreshold)
+            foreach (var periodType in Enum.GetValues<PeriodType>())
             {
-                if (_currentDay.IsValid)
+                // Contribute Current period
+                var current = _periodStore.GetCurrent(periodType);
+                if (current != null && current.IsInitialized)
                 {
-                    ContributePeriod(_currentDay, PeriodType.Daily, true, _currentDay.StartTime, DateTime.MaxValue);
+                    ContributePeriod(current, periodType, true, current.PeriodStart, current.PeriodEnd);
                 }
-                if (_previousDay.IsValid)
-                {
-                    ContributePeriod(_previousDay, PeriodType.Daily, false, _previousDay.StartTime, _currentDay.IsValid ? _currentDay.StartTime : DateTime.MaxValue);
-                }
-            }
 
-            // Contribute 4H data - only if chart has <= 4H candles
-            if (candleDuration <= FourHourThreshold)
-            {
-                if (_current4h.IsValid)
+                // Contribute Previous period
+                var previous = _periodStore.GetPrevious(periodType);
+                if (previous != null && previous.IsInitialized)
                 {
-                    ContributePeriod(_current4h, PeriodType.FourHour, true, _current4h.StartTime, DateTime.MaxValue);
-                }
-                if (_previous4h.IsValid)
-                {
-                    ContributePeriod(_previous4h, PeriodType.FourHour, false, _previous4h.StartTime, _current4h.IsValid ? _current4h.StartTime : DateTime.MaxValue);
-                }
-            }
-
-            // Contribute Weekly data - only if chart has <= 7 day candles
-            if (candleDuration <= WeeklyThreshold)
-            {
-                if (_currentWeek.IsValid)
-                {
-                    ContributePeriod(_currentWeek, PeriodType.Weekly, true, _currentWeek.StartTime, DateTime.MaxValue);
-                }
-                if (_previousWeek.IsValid)
-                {
-                    ContributePeriod(_previousWeek, PeriodType.Weekly, false, _previousWeek.StartTime, _currentWeek.IsValid ? _currentWeek.StartTime : DateTime.MaxValue);
-                }
-            }
-
-            // Contribute Monday data - only if chart has <= 1 day candles (need to see Monday specifically)
-            if (candleDuration <= DailyThreshold)
-            {
-                if (_currentMonday.IsValid)
-                {
-                    ContributePeriod(_currentMonday, PeriodType.Monday, true, _currentMonday.StartTime, _currentMonday.StartTime.Date.AddDays(1).AddHours(23));
-                }
-                if (_previousMonday.IsValid)
-                {
-                    ContributePeriod(_previousMonday, PeriodType.Monday, false, _previousMonday.StartTime, _previousMonday.StartTime.Date.AddDays(1).AddHours(23));
-                }
-            }
-
-            // Contribute Monthly data - only if chart has <= 30 day candles
-            if (candleDuration <= MonthlyThreshold)
-            {
-                if (_currentMonth.IsValid)
-                {
-                    ContributePeriod(_currentMonth, PeriodType.Monthly, true, _currentMonth.StartTime, DateTime.MaxValue);
-                }
-                if (_previousMonth.IsValid)
-                {
-                    ContributePeriod(_previousMonth, PeriodType.Monthly, false, _previousMonth.StartTime, _currentMonth.IsValid ? _currentMonth.StartTime : DateTime.MaxValue);
-                }
-            }
-
-            // Contribute Quarterly data - only if chart has <= 90 day candles
-            if (candleDuration <= QuarterlyThreshold)
-            {
-                if (_currentQuarter.IsValid)
-                {
-                    ContributePeriod(_currentQuarter, PeriodType.Quarterly, true, _currentQuarter.StartTime, DateTime.MaxValue);
-                }
-                if (_previousQuarter.IsValid)
-                {
-                    ContributePeriod(_previousQuarter, PeriodType.Quarterly, false, _previousQuarter.StartTime, _currentQuarter.IsValid ? _currentQuarter.StartTime : DateTime.MaxValue);
-                }
-            }
-
-            // Contribute Yearly data - only if chart has <= 365 day candles
-            if (candleDuration <= YearlyThreshold)
-            {
-                if (_currentYear.IsValid)
-                {
-                    ContributePeriod(_currentYear, PeriodType.Yearly, true, _currentYear.StartTime, DateTime.MaxValue);
-                }
-                if (_previousYear.IsValid)
-                {
-                    ContributePeriod(_previousYear, PeriodType.Yearly, false, _previousYear.StartTime, _currentYear.IsValid ? _currentYear.StartTime : DateTime.MaxValue);
+                    ContributePeriod(previous, periodType, false, previous.PeriodStart, previous.PeriodEnd);
                 }
             }
         }
 
-        private void ContributePeriod(PeriodRange range, PeriodType periodType, bool isCurrent, DateTime periodStart, DateTime periodEnd)
+        private void ContributePeriod(PeriodData data, PeriodType periodType, bool isCurrent, DateTime periodStart, DateTime periodEnd)
         {
-            if (_dataStore == null || !range.IsValid)
+            if (_dataStore == null || CurrentBar == 0)
                 return;
 
             var timeRange = new TimeRange
             {
-                Start = range.StartTime,
+                Start = data.PeriodStart,
                 End = GetCandle(CurrentBar - 1).Time.AddMinutes(GetCandleDurationMinutes()),
-                Open = range.Open,
-                High = range.High,
-                Low = range.Low,
-                Close = range.Close,
+                Open = data.Open,
+                High = data.High,
+                Low = data.Low,
+                Close = data.Close,
                 SourceId = _contributorId
             };
 
@@ -964,11 +781,10 @@ namespace sadnerd.io.ATAS.KeyLevels
             
             // Add session and 4H diagnostic info
             sb.AppendLine();
-            sb.AppendLine($"[SESSION DEBUG]");
-            sb.AppendLine($"  _sessionStartTime: {_sessionStartTime:yyyy-MM-dd HH:mm}");
-            sb.AppendLine($"  _last4hPeriodStart: {_last4hPeriodStart:yyyy-MM-dd HH:mm}");
-            sb.AppendLine($"  Current4H.StartTime: {(_current4h.IsValid ? _current4h.StartTime.ToString("yyyy-MM-dd HH:mm") : "invalid")}");
-            sb.AppendLine($"  Previous4H.StartTime: {(_previous4h.IsValid ? _previous4h.StartTime.ToString("yyyy-MM-dd HH:mm") : "invalid")}");
+            var current4h = _periodStore?.GetCurrent(PeriodType.FourHour);
+            var previous4h = _periodStore?.GetPrevious(PeriodType.FourHour);
+            sb.AppendLine($"  Current4H: {(current4h != null && current4h.IsInitialized ? current4h.PeriodStart.ToString("yyyy-MM-dd HH:mm") : "N/A")}");
+            sb.AppendLine($"  Previous4H: {(previous4h != null && previous4h.IsInitialized ? previous4h.PeriodStart.ToString("yyyy-MM-dd HH:mm") : "N/A")}");
             if (CurrentBar > 0)
             {
                 var lastCandle = GetCandle(CurrentBar - 1);
@@ -1006,30 +822,6 @@ namespace sadnerd.io.ATAS.KeyLevels
 
         protected override void OnRecalculate()
         {
-            _current4h.Reset();
-            _previous4h.Reset();
-            _currentDay.Reset();
-            _previousDay.Reset();
-            _currentMonday.Reset();
-            _previousMonday.Reset();
-            _currentQuarter.Reset();
-            _previousQuarter.Reset();
-            _currentYear.Reset();
-            _previousYear.Reset();
-            _currentWeek.Reset();
-            _previousWeek.Reset();
-            _currentMonth.Reset();
-            _previousMonth.Reset();
-            _last4hPeriodStart = DateTime.MinValue;
-            _sessionStartTime = DateTime.MinValue;
-            _lastDayStart = DateTime.MinValue;
-            _lastMondayStart = DateTime.MinValue;
-            _lastQuarter = -1;
-            _lastQuarterYear = -1;
-            _lastYear = -1;
-            _lastWeekStart = DateTime.MinValue;
-            _lastMonth = -1;
-            _lastMonthYear = -1;
             
             // NEW: Reset or create period store
             var timezone = InstrumentInfo?.TimeZone ?? 0;
@@ -1044,40 +836,17 @@ namespace sadnerd.io.ATAS.KeyLevels
 
             var candle = GetCandle(bar);
             
-            // NEW: O(1) ingest to time-based store
+            // Feed session starts and candle data to the period store
             if (_periodStore != null)
             {
-                // Set session start if we detect a new session
-                if (IsNewSession(bar) && _sessionStartTime != candle.Time)
+                if (IsNewSession(bar))
                 {
-                    _sessionStartTime = candle.Time;
                     _periodStore.SetSessionStart(candle.Time);
                 }
                 
                 _periodStore.AddCandle(candle.Time, bar, candle.Open, candle.High, candle.Low, candle.Close);
             }
 
-            // LEGACY: Keep old processing for now during transition
-            // Process daily periods first (need session start for 4H calculation)
-            ProcessDailyPeriod(bar, candle);
-
-            // Process 4-hour periods (depends on daily session start)
-            Process4HourPeriod(bar, candle);
-
-            // Process Monday (weekly) periods
-            ProcessMondayPeriod(bar, candle);
-
-            // Process quarterly periods
-            ProcessQuarterlyPeriod(bar, candle);
-
-            // Process yearly periods
-            ProcessYearlyPeriod(bar, candle);
-
-            // Process weekly (full week) periods
-            ProcessWeeklyPeriod(bar, candle);
-
-            // Process monthly periods
-            ProcessMonthlyPeriod(bar, candle);
 
             // Contribute processed data to the aggregation layer
             ContributeDataToAggregator(candle);
@@ -1195,267 +964,6 @@ namespace sadnerd.io.ATAS.KeyLevels
 
         #endregion
 
-        #region Period Processing
-
-        private void Process4HourPeriod(int bar, IndicatorCandle candle)
-        {
-            // Need a valid session start time to calculate 4H periods
-            if (_sessionStartTime == DateTime.MinValue)
-                return;
-
-            var candleTime = candle.Time;
-
-            // Calculate hours since session start
-            var hoursSinceSessionStart = (candleTime - _sessionStartTime).TotalHours;
-            
-            // Determine which 4H period this candle belongs to (0 = first 4H, 1 = second 4H, etc.)
-            var periodIndex = (int)Math.Floor(hoursSinceSessionStart / 4);
-            var periodStart = _sessionStartTime.AddHours(periodIndex * 4);
-
-            if (periodStart != _last4hPeriodStart)
-            {
-                // New 4-hour period
-                if (_current4h.IsValid)
-                {
-                    // Copy current to previous
-                    _previous4h.Open = _current4h.Open;
-                    _previous4h.High = _current4h.High;
-                    _previous4h.Low = _current4h.Low;
-                    _previous4h.Close = _current4h.Close;
-                    _previous4h.StartTime = _current4h.StartTime;
-                    _previous4h.StartBar = _current4h.StartBar;
-                    _previous4h.HighBar = _current4h.HighBar;
-                    _previous4h.LowBar = _current4h.LowBar;
-                }
-
-                _current4h.Initialize(candle, bar);
-                _last4hPeriodStart = periodStart;
-            }
-            else if (_current4h.IsValid)
-            {
-                _current4h.Update(candle, bar);
-            }
-        }
-
-        private void ProcessDailyPeriod(int bar, IndicatorCandle candle)
-        {
-            if (IsNewSession(bar))
-            {
-                var candleTime = candle.Time;
-                
-                if (candleTime != _lastDayStart)
-                {
-                    // New day
-                    if (_currentDay.IsValid)
-                    {
-                        // Copy current to previous
-                        _previousDay.Open = _currentDay.Open;
-                        _previousDay.High = _currentDay.High;
-                        _previousDay.Low = _currentDay.Low;
-                        _previousDay.Close = _currentDay.Close;
-                        _previousDay.StartTime = _currentDay.StartTime;
-                        _previousDay.StartBar = _currentDay.StartBar;
-                        _previousDay.HighBar = _currentDay.HighBar;
-                        _previousDay.LowBar = _currentDay.LowBar;
-                    }
-
-                    _currentDay.Initialize(candle, bar);
-                    _lastDayStart = candleTime;
-                    
-                    // Update session start time for 4H calculation
-                    // Previous 4H is preserved across sessions (last 4H of previous session)
-                    _sessionStartTime = candleTime;
-                }
-            }
-            else if (_currentDay.IsValid)
-            {
-                _currentDay.Update(candle, bar);
-            }
-            else if (bar == 0)
-            {
-                // Initialize on first bar if no session detected yet
-                _currentDay.Initialize(candle, bar);
-                _lastDayStart = candle.Time;
-                _sessionStartTime = candle.Time;
-            }
-        }
-
-        private void ProcessMondayPeriod(int bar, IndicatorCandle candle)
-        {
-            var candleTime = candle.Time.AddHours(InstrumentInfo?.TimeZone ?? 0);
-            var isMonday = candleTime.DayOfWeek == DayOfWeek.Monday;
-
-            // Detect new week (Monday)
-            if (IsNewWeek(bar) || (bar == 0 && isMonday))
-            {
-                if (candleTime.Date != _lastMondayStart.Date)
-                {
-                    // New Monday/week started
-                    if (_currentMonday.IsValid)
-                    {
-                        // Copy current Monday to previous
-                        _previousMonday.Open = _currentMonday.Open;
-                        _previousMonday.High = _currentMonday.High;
-                        _previousMonday.Low = _currentMonday.Low;
-                        _previousMonday.Close = _currentMonday.Close;
-                        _previousMonday.StartTime = _currentMonday.StartTime;
-                        _previousMonday.StartBar = _currentMonday.StartBar;
-                        _previousMonday.HighBar = _currentMonday.HighBar;
-                        _previousMonday.LowBar = _currentMonday.LowBar;
-                    }
-
-                    _currentMonday.Initialize(candle, bar);
-                    _lastMondayStart = candleTime;
-                }
-            }
-            else if (isMonday && _currentMonday.IsValid && _currentMonday.StartTime.Date == candleTime.Date)
-            {
-                // Still the same Monday, update the range
-                _currentMonday.Update(candle, bar);
-            }
-        }
-
-        private void ProcessQuarterlyPeriod(int bar, IndicatorCandle candle)
-        {
-            var candleTime = candle.Time.AddHours(InstrumentInfo?.TimeZone ?? 0);
-            var currentQuarter = (candleTime.Month - 1) / 3 + 1; // Q1=1, Q2=2, Q3=3, Q4=4
-            var currentYear = candleTime.Year;
-
-            // Detect new quarter
-            if (currentQuarter != _lastQuarter || currentYear != _lastQuarterYear)
-            {
-                if (_lastQuarter != -1) // Not the first time
-                {
-                    if (_currentQuarter.IsValid)
-                    {
-                        // Copy current to previous
-                        _previousQuarter.Open = _currentQuarter.Open;
-                        _previousQuarter.High = _currentQuarter.High;
-                        _previousQuarter.Low = _currentQuarter.Low;
-                        _previousQuarter.Close = _currentQuarter.Close;
-                        _previousQuarter.StartTime = _currentQuarter.StartTime;
-                        _previousQuarter.StartBar = _currentQuarter.StartBar;
-                        _previousQuarter.HighBar = _currentQuarter.HighBar;
-                        _previousQuarter.LowBar = _currentQuarter.LowBar;
-                    }
-                }
-
-                _currentQuarter.Initialize(candle, bar);
-                _lastQuarter = currentQuarter;
-                _lastQuarterYear = currentYear;
-            }
-            else if (_currentQuarter.IsValid)
-            {
-                _currentQuarter.Update(candle, bar);
-            }
-        }
-
-        private void ProcessYearlyPeriod(int bar, IndicatorCandle candle)
-        {
-            var candleTime = candle.Time.AddHours(InstrumentInfo?.TimeZone ?? 0);
-            var currentYear = candleTime.Year;
-
-            // Detect new year
-            if (currentYear != _lastYear)
-            {
-                if (_lastYear != -1) // Not the first time
-                {
-                    if (_currentYear.IsValid)
-                    {
-                        // Copy current to previous
-                        _previousYear.Open = _currentYear.Open;
-                        _previousYear.High = _currentYear.High;
-                        _previousYear.Low = _currentYear.Low;
-                        _previousYear.Close = _currentYear.Close;
-                        _previousYear.StartTime = _currentYear.StartTime;
-                        _previousYear.StartBar = _currentYear.StartBar;
-                        _previousYear.HighBar = _currentYear.HighBar;
-                        _previousYear.LowBar = _currentYear.LowBar;
-                    }
-                }
-
-                _currentYear.Initialize(candle, bar);
-                _lastYear = currentYear;
-            }
-            else if (_currentYear.IsValid)
-            {
-                _currentYear.Update(candle, bar);
-            }
-        }
-
-        private void ProcessWeeklyPeriod(int bar, IndicatorCandle candle)
-        {
-            var candleTime = candle.Time.AddHours(InstrumentInfo?.TimeZone ?? 0);
-            
-            // Calculate the Monday of the current week
-            var daysSinceMonday = (int)candleTime.DayOfWeek - 1;
-            if (daysSinceMonday < 0) daysSinceMonday = 6; // Sunday
-            var weekStart = candleTime.Date.AddDays(-daysSinceMonday);
-
-            // Detect new week
-            if (weekStart != _lastWeekStart)
-            {
-                if (_lastWeekStart != DateTime.MinValue) // Not the first time
-                {
-                    if (_currentWeek.IsValid)
-                    {
-                        // Copy current to previous
-                        _previousWeek.Open = _currentWeek.Open;
-                        _previousWeek.High = _currentWeek.High;
-                        _previousWeek.Low = _currentWeek.Low;
-                        _previousWeek.Close = _currentWeek.Close;
-                        _previousWeek.StartTime = _currentWeek.StartTime;
-                        _previousWeek.StartBar = _currentWeek.StartBar;
-                        _previousWeek.HighBar = _currentWeek.HighBar;
-                        _previousWeek.LowBar = _currentWeek.LowBar;
-                    }
-                }
-
-                _currentWeek.Initialize(candle, bar);
-                _lastWeekStart = weekStart;
-            }
-            else if (_currentWeek.IsValid)
-            {
-                _currentWeek.Update(candle, bar);
-            }
-        }
-
-        private void ProcessMonthlyPeriod(int bar, IndicatorCandle candle)
-        {
-            var candleTime = candle.Time.AddHours(InstrumentInfo?.TimeZone ?? 0);
-            var currentMonth = candleTime.Month;
-            var currentYear = candleTime.Year;
-
-            // Detect new month
-            if (currentMonth != _lastMonth || currentYear != _lastMonthYear)
-            {
-                if (_lastMonth != -1) // Not the first time
-                {
-                    if (_currentMonth.IsValid)
-                    {
-                        // Copy current to previous
-                        _previousMonth.Open = _currentMonth.Open;
-                        _previousMonth.High = _currentMonth.High;
-                        _previousMonth.Low = _currentMonth.Low;
-                        _previousMonth.Close = _currentMonth.Close;
-                        _previousMonth.StartTime = _currentMonth.StartTime;
-                        _previousMonth.StartBar = _currentMonth.StartBar;
-                        _previousMonth.HighBar = _currentMonth.HighBar;
-                        _previousMonth.LowBar = _currentMonth.LowBar;
-                    }
-                }
-
-                _currentMonth.Initialize(candle, bar);
-                _lastMonth = currentMonth;
-                _lastMonthYear = currentYear;
-            }
-            else if (_currentMonth.IsValid)
-            {
-                _currentMonth.Update(candle, bar);
-            }
-        }
-
-        #endregion
 
         #region Level Collection
 
