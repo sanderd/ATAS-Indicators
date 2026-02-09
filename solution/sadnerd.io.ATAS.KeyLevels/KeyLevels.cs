@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using System.Diagnostics;
 using ATAS.Indicators;
 using ATAS.Indicators.Drawing;
 using OFT.Attributes;
@@ -7,6 +8,8 @@ using OFT.Rendering.Context;
 using OFT.Rendering.Settings;
 using OFT.Rendering.Tools;
 using sadnerd.io.ATAS.KeyLevels.DataAggregation;
+using sadnerd.io.ATAS.KeyLevels.DataStore;
+using Utils.Common.Logging;
 using Rectangle = System.Drawing.Rectangle;
 using StringAlignment = System.Drawing.StringAlignment;
 using Color = System.Drawing.Color;
@@ -244,6 +247,9 @@ namespace sadnerd.io.ATAS.KeyLevels
         private readonly PeriodRange _previousMonth = new();
         private int _lastMonth = -1;
         private int _lastMonthYear = -1;
+
+        // NEW: Time-based period store for O(1) ingest
+        private TimeBasedPeriodStore? _periodStore;
 
         #endregion
 
@@ -961,6 +967,11 @@ namespace sadnerd.io.ATAS.KeyLevels
             _lastWeekStart = DateTime.MinValue;
             _lastMonth = -1;
             _lastMonthYear = -1;
+            
+            // NEW: Reset or create period store
+            var timezone = InstrumentInfo?.TimeZone ?? 0;
+            _periodStore = new TimeBasedPeriodStore(timezone);
+            this.LogInfo($"OnRecalculate: store created with timezone {timezone}");
         }
 
         protected override void OnCalculate(int bar, decimal value)
@@ -969,7 +980,21 @@ namespace sadnerd.io.ATAS.KeyLevels
             EnsureDataStoreInitialized();
 
             var candle = GetCandle(bar);
+            
+            // NEW: O(1) ingest to time-based store
+            if (_periodStore != null)
+            {
+                // Set session start if we detect a new session
+                if (IsNewSession(bar) && _sessionStartTime != candle.Time)
+                {
+                    _sessionStartTime = candle.Time;
+                    _periodStore.SetSessionStart(candle.Time);
+                }
+                
+                _periodStore.AddCandle(candle.Time, bar, candle.Open, candle.High, candle.Low, candle.Close);
+            }
 
+            // LEGACY: Keep old processing for now during transition
             // Process daily periods first (need session start for 4H calculation)
             ProcessDailyPeriod(bar, candle);
 
@@ -993,10 +1018,18 @@ namespace sadnerd.io.ATAS.KeyLevels
 
             // Contribute processed data to the aggregation layer
             ContributeDataToAggregator(candle);
+            
+            // Log diagnostics every 1000 bars
+            if (bar > 0 && bar % 1000 == 0)
+            {
+                _periodStore?.LogDiagnostics(this);
+            }
         }
 
         protected override void OnRender(RenderContext context, DrawingLayouts layout)
         {
+            var renderSw = Stopwatch.StartNew();
+            
             if (ChartInfo is null || Container is null)
                 return;
 
@@ -1051,6 +1084,8 @@ namespace sadnerd.io.ATAS.KeyLevels
             {
                 DrawUnavailableWarning(context, font, unavailable, region);
             }
+            
+            this.LogDebug($"OnRender: {levels.Count} levels in {renderSw.ElapsedMilliseconds}ms");
         }
 
         private void RenderAsRaysMode(List<KeyLevel> levels)
