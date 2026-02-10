@@ -51,3 +51,42 @@ public class RenderStringFormat
     public SDA Alignment { get; set; } = SDA.Near;
     public SDA LineAlignment { get; set; } = SDA.Center;
 }
+
+/// <summary>
+/// Mock Brush class matching System.Windows.Media.SolidColorBrush signature
+/// </summary>
+public class CrossBrush
+{
+    public CrossColor Color { get; set; }
+
+    public CrossBrush(CrossColor color)
+    {
+        Color = color;
+    }
+}
+
+/// <summary>
+/// Pen class matching System.Drawing.Pen signature for ATAS indicators
+/// </summary>
+public class CrossPen
+{
+    public System.Drawing.Color Color { get; set; }
+    public float Width { get; set; }
+
+    /// <summary>
+    /// Constructor matching System.Drawing.Pen(Color, float) signature
+    /// </summary>
+    public CrossPen(System.Drawing.Color color, float width)
+    {
+        Color = color;
+        Width = width;
+    }
+
+    /// <summary>
+    /// Convert to RenderPen for drawing
+    /// </summary>
+    public RenderPen ToRenderPen()
+    {
+        return new RenderPen(Color, Width);
+    }
+}
