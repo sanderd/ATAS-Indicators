@@ -81,6 +81,7 @@ jobs:
         # Copy indicator DLLs
         $indicators = @(
             @{ Name = "EmaWithCloud"; Project = "sadnerd.io.ATAS.EmaWithCloud" },
+            @{ Name = "KeyLevels"; Project = "sadnerd.io.ATAS.KeyLevels" },
             @{ Name = "PvsraCandles"; Project = "sadnerd.io.ATAS.PvsraCandles" }
         )
         
@@ -106,6 +107,7 @@ jobs:
         ## Included Indicators
 
         - **EmaWithCloud**: EMA indicator with cloud visualization
+        - **KeyLevels**: Key price level visualization
         - **PvsraCandles**: PVSRA-style candle coloring
 
         ## Requirements
@@ -122,6 +124,30 @@ jobs:
         @"
         @echo off
         echo Installing ATAS Indicators $tagName...
+        
+        REM Verify we have the expected indicator DLLs
+        if not exist "sadnerd.io.ATAS.*.dll" (
+            echo ERROR: No sadnerd.io.ATAS.*.dll files found in current directory.
+            echo Are you sure you extracted the files from the archive?
+            echo.
+            echo Please extract the zip file first, then run this script from the extracted folder.
+            pause
+            exit /b 1
+        )
+        
+        REM Check for unexpected DLLs
+        for %%f in (*.dll) do (
+            echo %%~nf | findstr /B /C:"sadnerd.io.ATAS." >nul
+            if errorlevel 1 (
+                echo ERROR: Unexpected DLL found: %%f
+                echo Are you sure you extracted the files from the archive?
+                echo.
+                echo Only sadnerd.io.ATAS.*.dll files should be present.
+                pause
+                exit /b 1
+            )
+        )
+        
         set "ATAS_INDICATORS_DIR=%APPDATA%\ATAS\Indicators"
         
         if not exist "%ATAS_INDICATORS_DIR%" (
@@ -129,7 +155,7 @@ jobs:
             mkdir "%ATAS_INDICATORS_DIR%"
         )
         
-        copy /Y "*.dll" "%ATAS_INDICATORS_DIR%\"
+        copy /Y "sadnerd.io.ATAS.*.dll" "%ATAS_INDICATORS_DIR%\"
         
         echo.
         echo Installation complete!
@@ -158,6 +184,7 @@ jobs:
         ## Included Indicators
 
         - **EmaWithCloud**: EMA indicator with cloud visualization between fast and slow EMAs
+        - **KeyLevels**: Key price level visualization with customizable styling
         - **PvsraCandles**: PVSRA-style candle coloring based on volume analysis
 
         ## Installation
