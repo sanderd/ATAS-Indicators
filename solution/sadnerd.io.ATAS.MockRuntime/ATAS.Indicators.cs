@@ -36,7 +36,7 @@ public class InstrumentInfo
 {
     public int TimeZone { get; set; }
     public decimal TickSize { get; set; } = 0.01m;
-    public string Symbol { get; set; } = "MOCK";
+    public string Instrument { get; set; } = "MOCK";
 }
 
 /// <summary>
@@ -192,6 +192,9 @@ public abstract class Indicator
 
     // Data series (minimal implementation)
     public DataSeriesCollection DataSeries { get; } = new();
+    
+    // TrendLines collection for ray rendering
+    public ATAS.Indicators.Drawing.TrendLinesCollection TrendLines { get; } = new();
 
     protected Indicator() { DataSeries.Add(new DataSeries()); }
     protected Indicator(bool useDefault) { if (useDefault) DataSeries.Add(new DataSeries()); }
