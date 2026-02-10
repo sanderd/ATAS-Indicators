@@ -665,6 +665,7 @@ namespace sadnerd.io.ATAS.KeyLevels
         /// </summary>
         private void LogDataStoreContentsIfDue()
         {
+#if DEBUG
             var now = DateTime.UtcNow;
             if ((now - _lastDiagnosticLogTime).TotalSeconds < DiagnosticLogIntervalSeconds)
                 return;
@@ -707,6 +708,7 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
             
             this.LogInfo(sb.ToString());
+#endif
         }
 
         private int GetCandleDurationMinutes()
