@@ -35,9 +35,19 @@ public class PeriodPoi
     
     /// <summary>Closing price at the end of the latest covered range.</summary>
     public decimal Close { get; private set; }
-    
+
     /// <summary>Midpoint between High and Low.</summary>
     public decimal Mid => Low + (High - Low) / 2;
+
+    // OHLC timestamps (from most granular source) and their granularity (minutes)
+    public DateTime OpenTime { get; private set; }
+    public DateTime HighTime { get; private set; }
+    public DateTime LowTime { get; private set; }
+    public DateTime CloseTime { get; private set; }
+    public int OpenTimeGranularity { get; private set; } = int.MaxValue;
+    public int HighTimeGranularity { get; private set; } = int.MaxValue;
+    public int LowTimeGranularity { get; private set; } = int.MaxValue;
+    public int CloseTimeGranularity { get; private set; } = int.MaxValue;
 
     /// <summary>Read-only list of covered time ranges (sorted by Start, merged when contiguous).</summary>
     public IReadOnlyList<TimeRange> CoveredRanges
@@ -79,6 +89,11 @@ public class PeriodPoi
                 High = range.High,
                 Low = range.Low,
                 Close = range.Close,
+                OpenTime = range.OpenTime,
+                HighTime = range.HighTime,
+                LowTime = range.LowTime,
+                CloseTime = range.CloseTime,
+                CandleDurationMinutes = range.CandleDurationMinutes,
                 SourceId = range.SourceId
             };
 
@@ -251,11 +266,38 @@ public class PeriodPoi
 
         // Sort by start time to get correct Open and Close
         var sorted = _coveredRanges.OrderBy(r => r.Start).ToList();
+        var earliest = sorted[0];
+        var latest = sorted.OrderByDescending(r => r.End).First();
         
-        Open = sorted[0].Open;
+        Open = earliest.Open;
         High = sorted.Max(r => r.High);
         Low = sorted.Min(r => r.Low);
-        Close = sorted.OrderByDescending(r => r.End).First().Close;
+        Close = latest.Close;
+
+        // Timestamps — pick from the range with the most granular source
+        // For Open: earliest range
+        OpenTime = earliest.OpenTime;
+        OpenTimeGranularity = earliest.CandleDurationMinutes;
+        
+        // For High: find the range that has the highest High, prefer more granular
+        var highRange = sorted
+            .Where(r => r.High == High)
+            .OrderBy(r => r.CandleDurationMinutes)
+            .First();
+        HighTime = highRange.HighTime;
+        HighTimeGranularity = highRange.CandleDurationMinutes;
+        
+        // For Low: find the range that has the lowest Low, prefer more granular
+        var lowRange = sorted
+            .Where(r => r.Low == Low)
+            .OrderBy(r => r.CandleDurationMinutes)
+            .First();
+        LowTime = lowRange.LowTime;
+        LowTimeGranularity = lowRange.CandleDurationMinutes;
+        
+        // For Close: latest range
+        CloseTime = latest.CloseTime;
+        CloseTimeGranularity = latest.CandleDurationMinutes;
     }
 
     /// <summary>
