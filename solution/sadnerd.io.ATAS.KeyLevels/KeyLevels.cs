@@ -923,7 +923,20 @@ namespace sadnerd.io.ATAS.KeyLevels
                 levels.Add(new KeyLevel(curr4h.Open, _useShortLabels ? "4HO" : "4H Open", _4hColor, curr4h.OpenTime));
             }
 
-            // Previous 4H Mid - require complete coverage
+            // Current 4H High/Low
+            if (_show4hHighLow && curr4h != null && curr4h.IsInitialized)
+            {
+                levels.Add(new KeyLevel(curr4h.High, _useShortLabels ? "4HH" : "4H High", _4hColor, curr4h.HighTime));
+                levels.Add(new KeyLevel(curr4h.Low, _useShortLabels ? "4HL" : "4H Low", _4hColor, curr4h.LowTime));
+            }
+
+            // Current 4H Mid
+            if (_show4hMid && curr4h != null && curr4h.IsInitialized)
+            {
+                levels.Add(new KeyLevel(curr4h.Mid, _useShortLabels ? "4HM" : "4H Mid", _4hColor, curr4h.OpenTime));
+            }
+
+            // Previous 4H Mid
             if (_show4hMid && prev4h != null && prev4h.IsInitialized)
             {
                 levels.Add(new KeyLevel(prev4h.Mid, _useShortLabels ? "P4HM" : "Prev 4H Mid", _4hColor, prev4h.OpenTime));
@@ -1024,7 +1037,20 @@ namespace sadnerd.io.ATAS.KeyLevels
                 levels.Add(new KeyLevel(currWeek.Open, _useShortLabels ? "WO" : "Week Open", _weeklyColor, currWeek.OpenTime));
             }
 
-            // Previous Week High/Low - require complete coverage
+            // Current Week High/Low
+            if (_showPrevWeekHighLow && currWeek != null && currWeek.IsInitialized)
+            {
+                levels.Add(new KeyLevel(currWeek.High, _useShortLabels ? "WH" : "Week High", _weeklyColor, currWeek.HighTime));
+                levels.Add(new KeyLevel(currWeek.Low, _useShortLabels ? "WL" : "Week Low", _weeklyColor, currWeek.LowTime));
+            }
+
+            // Current Week Mid
+            if (_showPrevWeekMid && currWeek != null && currWeek.IsInitialized)
+            {
+                levels.Add(new KeyLevel(currWeek.Mid, _useShortLabels ? "WM" : "Week Mid", _weeklyColor, currWeek.OpenTime));
+            }
+
+            // Previous Week High/Low
             var prevWeek = GetPoi(PeriodType.Weekly, false);
             if (_showPrevWeekHighLow && prevWeek != null && prevWeek.IsInitialized)
             {
@@ -1032,7 +1058,7 @@ namespace sadnerd.io.ATAS.KeyLevels
                 levels.Add(new KeyLevel(prevWeek.Low, _useShortLabels ? "PWL" : "Prev Week Low", _weeklyColor, prevWeek.LowTime));
             }
 
-            // Previous Week Mid - require complete coverage
+            // Previous Week Mid
             if (_showPrevWeekMid && prevWeek != null && prevWeek.IsInitialized)
             {
                 levels.Add(new KeyLevel(prevWeek.Mid, _useShortLabels ? "PWM" : "Prev Week Mid", _weeklyColor, prevWeek.OpenTime));
@@ -1045,7 +1071,20 @@ namespace sadnerd.io.ATAS.KeyLevels
                 levels.Add(new KeyLevel(currMonth.Open, _useShortLabels ? "MO" : "Month Open", _monthlyColor, currMonth.OpenTime));
             }
 
-            // Previous Month High/Low - require complete coverage
+            // Current Month High/Low
+            if (_showPrevMonthHighLow && currMonth != null && currMonth.IsInitialized)
+            {
+                levels.Add(new KeyLevel(currMonth.High, _useShortLabels ? "MH" : "Month High", _monthlyColor, currMonth.HighTime));
+                levels.Add(new KeyLevel(currMonth.Low, _useShortLabels ? "ML" : "Month Low", _monthlyColor, currMonth.LowTime));
+            }
+
+            // Current Month Mid
+            if (_showPrevMonthMid && currMonth != null && currMonth.IsInitialized)
+            {
+                levels.Add(new KeyLevel(currMonth.Mid, _useShortLabels ? "MM" : "Month Mid", _monthlyColor, currMonth.OpenTime));
+            }
+
+            // Previous Month High/Low
             var prevMonth = GetPoi(PeriodType.Monthly, false);
             if (_showPrevMonthHighLow && prevMonth != null && prevMonth.IsInitialized)
             {
@@ -1053,7 +1092,7 @@ namespace sadnerd.io.ATAS.KeyLevels
                 levels.Add(new KeyLevel(prevMonth.Low, _useShortLabels ? "PML" : "Prev Month Low", _monthlyColor, prevMonth.LowTime));
             }
 
-            // Previous Month Mid - require complete coverage
+            // Previous Month Mid
             if (_showPrevMonthMid && prevMonth != null && prevMonth.IsInitialized)
             {
                 levels.Add(new KeyLevel(prevMonth.Mid, _useShortLabels ? "PMM" : "Prev Month Mid", _monthlyColor, prevMonth.OpenTime));
