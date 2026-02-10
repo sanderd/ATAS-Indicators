@@ -153,18 +153,10 @@ namespace sadnerd.io.ATAS.KeyLevels
 
         #endregion
 
-        #region Fields - Period Tracking
-
-        // Time-based period store for O(1) ingest
-        private TimeBasedPeriodStore? _periodStore;
-
-        #endregion
 
         #region Fields - Data Aggregation
 
         private InstrumentDataStore? _dataStore;
-        private string _contributorId = Guid.NewGuid().ToString();
-        private DateTime _lastContributionTime = DateTime.MinValue;
         private DateTime _lastDiagnosticLogTime = DateTime.MinValue;
         private const int DiagnosticLogIntervalSeconds = 15;
 
@@ -650,56 +642,6 @@ namespace sadnerd.io.ATAS.KeyLevels
             }
         }
 
-        private void ContributeDataToAggregator(IndicatorCandle latestCandle)
-        {
-            if (_dataStore == null || _periodStore == null)
-                return;
-
-            foreach (var periodType in Enum.GetValues<PeriodType>())
-            {
-                // Contribute Current period
-                var current = _periodStore.GetCurrent(periodType);
-                if (current != null && current.IsInitialized)
-                {
-                    ContributePeriod(current, periodType, true, current.PeriodStart, current.PeriodEnd);
-                }
-
-                // Contribute Previous period
-                var previous = _periodStore.GetPrevious(periodType);
-                if (previous != null && previous.IsInitialized)
-                {
-                    ContributePeriod(previous, periodType, false, previous.PeriodStart, previous.PeriodEnd);
-                }
-            }
-        }
-
-        private void ContributePeriod(PeriodData data, PeriodType periodType, bool isCurrent, DateTime periodStart, DateTime periodEnd)
-        {
-            if (_dataStore == null || CurrentBar == 0)
-                return;
-
-            var lastCandle = GetCandle(CurrentBar - 1);
-            var candleDuration = GetCandleDurationMinutes();
-
-            var timeRange = new TimeRange
-            {
-                Start = data.PeriodStart,
-                End = lastCandle.Time.AddMinutes(candleDuration),
-                Open = data.Open,
-                High = data.High,
-                Low = data.Low,
-                Close = data.Close,
-                OpenTime = data.PeriodStart,
-                HighTime = data.HighTime,
-                LowTime = data.LowTime,
-                CloseTime = lastCandle.Time,
-                CandleDurationMinutes = candleDuration,
-                SourceId = _contributorId
-            };
-
-            _dataStore.ContributePeriodData(periodType, isCurrent, periodStart, periodEnd, timeRange);
-        }
-
         /// <summary>
         /// Checks if we have adequate data coverage for a given period/level type.
         /// For High/Low/Mid levels, we need complete coverage of the period.
@@ -715,19 +657,7 @@ namespace sadnerd.io.ATAS.KeyLevels
                 return false;
 
             var poi = _dataStore.GetPeriodPoi(periodType, isCurrent);
-            if (poi == null)
-                return false;
-
-            if (requireComplete)
-            {
-                // For High/Low/Mid we need complete coverage
-                return poi.HasCompleteCoverage();
-            }
-            else
-            {
-                // For Open we just need coverage at the start of the period
-                return poi.HasCoverageAt(poi.PeriodStart);
-            }
+            return poi?.IsInitialized ?? false;
         }
 
         /// <summary>
@@ -755,7 +685,7 @@ namespace sadnerd.io.ATAS.KeyLevels
                 foreach (var isCurrent in new[] { true, false })
                 {
                     var poi = _dataStore.GetPeriodPoi(periodType, isCurrent);
-                    if (poi != null)
+                    if (poi != null && poi.IsInitialized)
                     {
                         var label = isCurrent ? "Current" : "Previous";
                         var periodEnd = poi.PeriodEnd == DateTime.MaxValue ? "ongoing" : poi.PeriodEnd.ToString("yyyy-MM-dd HH:mm");
@@ -763,38 +693,13 @@ namespace sadnerd.io.ATAS.KeyLevels
                         sb.AppendLine($"    Period: {poi.PeriodStart:yyyy-MM-dd HH:mm} to {periodEnd}");
                         sb.AppendLine($"    Granularity: O={poi.OpenTimeGranularity}m H={poi.HighTimeGranularity}m L={poi.LowTimeGranularity}m C={poi.CloseTimeGranularity}m");
                         sb.AppendLine($"    Times: O={poi.OpenTime:yyyy-MM-dd HH:mm} H={poi.HighTime:yyyy-MM-dd HH:mm} L={poi.LowTime:yyyy-MM-dd HH:mm} C={poi.CloseTime:yyyy-MM-dd HH:mm}");
-                        sb.AppendLine($"    Complete: {poi.HasCompleteCoverage()}");
-                        
-                        // Log covered ranges
-                        var ranges = poi.CoveredRanges;
-                        sb.AppendLine($"    CoveredRanges ({ranges.Count}):");
-                        foreach (var range in ranges.Take(3)) // Limit to first 3
-                        {
-                            sb.AppendLine($"      {range.Start:yyyy-MM-dd HH:mm} to {range.End:yyyy-MM-dd HH:mm}");
-                        }
-                        if (ranges.Count > 3)
-                            sb.AppendLine($"      ... and {ranges.Count - 3} more");
-                        
-                        // Log gaps if incomplete
-                        if (!poi.HasCompleteCoverage())
-                        {
-                            var gaps = poi.GetGaps().Take(3).ToList();
-                            sb.AppendLine($"    Gaps ({gaps.Count}):");
-                            foreach (var gap in gaps)
-                            {
-                                sb.AppendLine($"      {gap.Start:yyyy-MM-dd HH:mm} to {gap.End:yyyy-MM-dd HH:mm}");
-                            }
-                        }
+                        sb.AppendLine($"    LatestBar: {poi.LatestBarTime:yyyy-MM-dd HH:mm}");
                     }
                 }
             }
             
-            // Add session and 4H diagnostic info
             sb.AppendLine();
-            var current4h = _periodStore?.GetCurrent(PeriodType.FourHour);
-            var previous4h = _periodStore?.GetPrevious(PeriodType.FourHour);
-            sb.AppendLine($"  Current4H: {(current4h != null && current4h.IsInitialized ? current4h.PeriodStart.ToString("yyyy-MM-dd HH:mm") : "N/A")}");
-            sb.AppendLine($"  Previous4H: {(previous4h != null && previous4h.IsInitialized ? previous4h.PeriodStart.ToString("yyyy-MM-dd HH:mm") : "N/A")}");
+            sb.AppendLine($"  Session: {_dataStore.CurrentSessionStart:yyyy-MM-dd HH:mm}");
             if (CurrentBar > 0)
             {
                 var lastCandle = GetCandle(CurrentBar - 1);
@@ -832,40 +737,30 @@ namespace sadnerd.io.ATAS.KeyLevels
 
         protected override void OnRecalculate()
         {
-            
-            // NEW: Reset or create period store
-            var timezone = InstrumentInfo?.TimeZone ?? 0;
-            _periodStore = new TimeBasedPeriodStore(timezone);
-            this.LogInfo($"OnRecalculate: store created with timezone {timezone}");
+            // Nothing to reset — the shared InstrumentDataStore persists across recalculations
         }
 
         protected override void OnCalculate(int bar, decimal value)
         {
-            // Ensure data store is initialized for this instrument
             EnsureDataStoreInitialized();
 
+            if (_dataStore == null)
+                return;
+
             var candle = GetCandle(bar);
-            
-            // Feed session starts and candle data to the period store
-            if (_periodStore != null)
+
+            // Report session starts to the shared data store
+            if (IsNewSession(bar))
             {
-                if (IsNewSession(bar))
-                {
-                    _periodStore.SetSessionStart(candle.Time);
-                }
-                
-                _periodStore.AddCandle(candle.Time, bar, candle.Open, candle.High, candle.Low, candle.Close);
+                _dataStore.SetSessionStart(candle.Time);
             }
 
+            // Report this bar's data — the store matches it to applicable periods
+            _dataStore.ProcessBar(candle.Time, GetCandleDurationMinutes(),
+                candle.Open, candle.High, candle.Low, candle.Close);
 
-            // Contribute processed data to the aggregation layer
-            ContributeDataToAggregator(candle);
-            
-            // Log diagnostics every 1000 bars
-            if (bar > 0 && bar % 1000 == 0)
-            {
-                _periodStore?.LogDiagnostics(this);
-            }
+            // Log diagnostics periodically
+            LogDataStoreContentsIfDue();
         }
 
         protected override void OnRender(RenderContext context, DrawingLayouts layout)
@@ -1015,7 +910,7 @@ namespace sadnerd.io.ATAS.KeyLevels
 
             // Previous 4H High/Low - require complete coverage
             var prev4h = GetPoi(PeriodType.FourHour, false);
-            if (_show4hHighLow && prev4h != null && prev4h.HasCompleteCoverage())
+            if (_show4hHighLow && prev4h != null && prev4h.IsInitialized)
             {
                 levels.Add(new KeyLevel(prev4h.High, _useShortLabels ? "P4HH" : "Prev 4H High", _4hColor, prev4h.HighTime));
                 levels.Add(new KeyLevel(prev4h.Low, _useShortLabels ? "P4HL" : "Prev 4H Low", _4hColor, prev4h.LowTime));
@@ -1023,34 +918,34 @@ namespace sadnerd.io.ATAS.KeyLevels
 
             // Current 4H Open - just need period start
             var curr4h = GetPoi(PeriodType.FourHour, true);
-            if (_show4hOpen && curr4h != null && curr4h.HasCoverageAt(curr4h.PeriodStart))
+            if (_show4hOpen && curr4h != null && curr4h.IsInitialized)
             {
                 levels.Add(new KeyLevel(curr4h.Open, _useShortLabels ? "4HO" : "4H Open", _4hColor, curr4h.OpenTime));
             }
 
             // Previous 4H Mid - require complete coverage
-            if (_show4hMid && prev4h != null && prev4h.HasCompleteCoverage())
+            if (_show4hMid && prev4h != null && prev4h.IsInitialized)
             {
                 levels.Add(new KeyLevel(prev4h.Mid, _useShortLabels ? "P4HM" : "Prev 4H Mid", _4hColor, prev4h.OpenTime));
             }
 
             // Daily Open - just need period start
             var currDay = GetPoi(PeriodType.Daily, true);
-            if (_showDailyOpen && currDay != null && currDay.HasCoverageAt(currDay.PeriodStart))
+            if (_showDailyOpen && currDay != null && currDay.IsInitialized)
             {
                 levels.Add(new KeyLevel(currDay.Open, _useShortLabels ? "DO" : "Day Open", _dailyColor, currDay.OpenTime));
             }
 
             // Previous Day High/Low - require complete coverage
             var prevDay = GetPoi(PeriodType.Daily, false);
-            if (_showPrevDayHighLow && prevDay != null && prevDay.HasCompleteCoverage())
+            if (_showPrevDayHighLow && prevDay != null && prevDay.IsInitialized)
             {
                 levels.Add(new KeyLevel(prevDay.High, _useShortLabels ? "PDH" : "Prev Day High", _dailyColor, prevDay.HighTime));
                 levels.Add(new KeyLevel(prevDay.Low, _useShortLabels ? "PDL" : "Prev Day Low", _dailyColor, prevDay.LowTime));
             }
 
             // Previous Day Mid - require complete coverage
-            if (_showPrevDayMid && prevDay != null && prevDay.HasCompleteCoverage())
+            if (_showPrevDayMid && prevDay != null && prevDay.IsInitialized)
             {
                 levels.Add(new KeyLevel(prevDay.Mid, _useShortLabels ? "PDM" : "Prev Day Mid", _dailyColor, prevDay.OpenTime));
             }
@@ -1058,108 +953,108 @@ namespace sadnerd.io.ATAS.KeyLevels
             // Monday High/Low - prefer current week's Monday, fallback to previous
             var currMonday = GetPoi(PeriodType.Monday, true);
             var prevMonday = GetPoi(PeriodType.Monday, false);
-            var usedMonday = (currMonday != null && currMonday.HasCompleteCoverage()) ? currMonday : prevMonday;
+            var usedMonday = (currMonday != null && currMonday.IsInitialized) ? currMonday : prevMonday;
             bool isPrevMonday = usedMonday == prevMonday;
             
-            if (_showMondayHighLow && usedMonday != null && usedMonday.HasCompleteCoverage())
+            if (_showMondayHighLow && usedMonday != null && usedMonday.IsInitialized)
             {
                 levels.Add(new KeyLevel(usedMonday.High, _useShortLabels ? (isPrevMonday ? "PMDAYH" : "MDAYH") : (isPrevMonday ? "Prev Mon High" : "Mon High"), _mondayColor, usedMonday.HighTime));
                 levels.Add(new KeyLevel(usedMonday.Low, _useShortLabels ? (isPrevMonday ? "PMDAYL" : "MDAYL") : (isPrevMonday ? "Prev Mon Low" : "Mon Low"), _mondayColor, usedMonday.LowTime));
             }
 
             // Monday Mid
-            if (_showMondayMid && usedMonday != null && usedMonday.HasCompleteCoverage())
+            if (_showMondayMid && usedMonday != null && usedMonday.IsInitialized)
             {
                 levels.Add(new KeyLevel(usedMonday.Mid, _useShortLabels ? (isPrevMonday ? "PMDAYM" : "MDAYM") : (isPrevMonday ? "Prev Mon Mid" : "Mon Mid"), _mondayColor, usedMonday.OpenTime));
             }
 
             // Quarterly Open - just need period start
             var currQuarter = GetPoi(PeriodType.Quarterly, true);
-            if (_showQuarterlyOpen && currQuarter != null && currQuarter.HasCoverageAt(currQuarter.PeriodStart))
+            if (_showQuarterlyOpen && currQuarter != null && currQuarter.IsInitialized)
             {
                 levels.Add(new KeyLevel(currQuarter.Open, _useShortLabels ? "QO" : "Quarter Open", _quarterlyColor, currQuarter.OpenTime));
             }
 
             // Previous Quarter High/Low - require complete coverage
             var prevQuarter = GetPoi(PeriodType.Quarterly, false);
-            if (_showPrevQuarterHighLow && prevQuarter != null && prevQuarter.HasCompleteCoverage())
+            if (_showPrevQuarterHighLow && prevQuarter != null && prevQuarter.IsInitialized)
             {
                 levels.Add(new KeyLevel(prevQuarter.High, _useShortLabels ? "PQH" : "Prev Quarter High", _quarterlyColor, prevQuarter.HighTime));
                 levels.Add(new KeyLevel(prevQuarter.Low, _useShortLabels ? "PQL" : "Prev Quarter Low", _quarterlyColor, prevQuarter.LowTime));
             }
 
             // Previous Quarter Mid - require complete coverage
-            if (_showPrevQuarterMid && prevQuarter != null && prevQuarter.HasCompleteCoverage())
+            if (_showPrevQuarterMid && prevQuarter != null && prevQuarter.IsInitialized)
             {
                 levels.Add(new KeyLevel(prevQuarter.Mid, _useShortLabels ? "PQM" : "Prev Quarter Mid", _quarterlyColor, prevQuarter.OpenTime));
             }
 
             // Previous Year High/Low - require complete coverage
             var prevYear = GetPoi(PeriodType.Yearly, false);
-            if (_showPrevYearHighLow && prevYear != null && prevYear.HasCompleteCoverage())
+            if (_showPrevYearHighLow && prevYear != null && prevYear.IsInitialized)
             {
                 levels.Add(new KeyLevel(prevYear.High, _useShortLabels ? "PYH" : "Prev Year High", _yearlyColor, prevYear.HighTime));
                 levels.Add(new KeyLevel(prevYear.Low, _useShortLabels ? "PYL" : "Prev Year Low", _yearlyColor, prevYear.LowTime));
             }
 
             // Previous Year Mid - require complete coverage
-            if (_showPrevYearMid && prevYear != null && prevYear.HasCompleteCoverage())
+            if (_showPrevYearMid && prevYear != null && prevYear.IsInitialized)
             {
                 levels.Add(new KeyLevel(prevYear.Mid, _useShortLabels ? "PYM" : "Prev Year Mid", _yearlyColor, prevYear.OpenTime));
             }
 
             // Current Year High/Low - require complete coverage
             var currYear = GetPoi(PeriodType.Yearly, true);
-            if (_showCurrentYearHighLow && currYear != null && currYear.HasCompleteCoverage())
+            if (_showCurrentYearHighLow && currYear != null && currYear.IsInitialized)
             {
                 levels.Add(new KeyLevel(currYear.High, _useShortLabels ? "CYH" : "Year High", _yearlyColor, currYear.HighTime));
                 levels.Add(new KeyLevel(currYear.Low, _useShortLabels ? "CYL" : "Year Low", _yearlyColor, currYear.LowTime));
             }
 
             // Current Year Mid - require complete coverage
-            if (_showCurrentYearMid && currYear != null && currYear.HasCompleteCoverage())
+            if (_showCurrentYearMid && currYear != null && currYear.IsInitialized)
             {
                 levels.Add(new KeyLevel(currYear.Mid, _useShortLabels ? "CYM" : "Year Mid", _yearlyColor, currYear.OpenTime));
             }
 
             // Week Open - just need period start
             var currWeek = GetPoi(PeriodType.Weekly, true);
-            if (_showWeekOpen && currWeek != null && currWeek.HasCoverageAt(currWeek.PeriodStart))
+            if (_showWeekOpen && currWeek != null && currWeek.IsInitialized)
             {
                 levels.Add(new KeyLevel(currWeek.Open, _useShortLabels ? "WO" : "Week Open", _weeklyColor, currWeek.OpenTime));
             }
 
             // Previous Week High/Low - require complete coverage
             var prevWeek = GetPoi(PeriodType.Weekly, false);
-            if (_showPrevWeekHighLow && prevWeek != null && prevWeek.HasCompleteCoverage())
+            if (_showPrevWeekHighLow && prevWeek != null && prevWeek.IsInitialized)
             {
                 levels.Add(new KeyLevel(prevWeek.High, _useShortLabels ? "PWH" : "Prev Week High", _weeklyColor, prevWeek.HighTime));
                 levels.Add(new KeyLevel(prevWeek.Low, _useShortLabels ? "PWL" : "Prev Week Low", _weeklyColor, prevWeek.LowTime));
             }
 
             // Previous Week Mid - require complete coverage
-            if (_showPrevWeekMid && prevWeek != null && prevWeek.HasCompleteCoverage())
+            if (_showPrevWeekMid && prevWeek != null && prevWeek.IsInitialized)
             {
                 levels.Add(new KeyLevel(prevWeek.Mid, _useShortLabels ? "PWM" : "Prev Week Mid", _weeklyColor, prevWeek.OpenTime));
             }
 
             // Month Open - just need period start
             var currMonth = GetPoi(PeriodType.Monthly, true);
-            if (_showMonthOpen && currMonth != null && currMonth.HasCoverageAt(currMonth.PeriodStart))
+            if (_showMonthOpen && currMonth != null && currMonth.IsInitialized)
             {
                 levels.Add(new KeyLevel(currMonth.Open, _useShortLabels ? "MO" : "Month Open", _monthlyColor, currMonth.OpenTime));
             }
 
             // Previous Month High/Low - require complete coverage
             var prevMonth = GetPoi(PeriodType.Monthly, false);
-            if (_showPrevMonthHighLow && prevMonth != null && prevMonth.HasCompleteCoverage())
+            if (_showPrevMonthHighLow && prevMonth != null && prevMonth.IsInitialized)
             {
                 levels.Add(new KeyLevel(prevMonth.High, _useShortLabels ? "PMH" : "Prev Month High", _monthlyColor, prevMonth.HighTime));
                 levels.Add(new KeyLevel(prevMonth.Low, _useShortLabels ? "PML" : "Prev Month Low", _monthlyColor, prevMonth.LowTime));
             }
 
             // Previous Month Mid - require complete coverage
-            if (_showPrevMonthMid && prevMonth != null && prevMonth.HasCompleteCoverage())
+            if (_showPrevMonthMid && prevMonth != null && prevMonth.IsInitialized)
             {
                 levels.Add(new KeyLevel(prevMonth.Mid, _useShortLabels ? "PMM" : "Prev Month Mid", _monthlyColor, prevMonth.OpenTime));
             }

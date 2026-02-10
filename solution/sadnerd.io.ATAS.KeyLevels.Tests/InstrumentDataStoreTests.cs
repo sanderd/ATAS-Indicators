@@ -5,259 +5,184 @@ using Xunit;
 namespace sadnerd.io.ATAS.KeyLevels.Tests;
 
 /// <summary>
-/// Unit tests for the InstrumentDataStore class.
+/// Unit tests for the bar-based InstrumentDataStore.
 /// </summary>
 public class InstrumentDataStoreTests
 {
-    private static readonly DateTime DayStart = new(2026, 2, 8, 0, 0, 0);
-    private static readonly DateTime DayEnd = new(2026, 2, 9, 0, 0, 0);
+    private static readonly DateTime SessionStart = new(2025, 1, 6, 23, 0, 0); // Sunday 23:00
 
     [Fact]
-    public void Constructor_SetsSymbol()
+    public void SetSessionStart_CreatesDailyPeriod()
     {
         var store = new InstrumentDataStore("ES");
-        Assert.Equal("ES", store.Symbol);
+        store.SetSessionStart(SessionStart);
+
+        var daily = store.GetPeriodPoi(PeriodType.Daily, true);
+        Assert.NotNull(daily);
+        Assert.Equal(SessionStart, daily!.PeriodStart);
     }
 
     [Fact]
-    public void Constructor_ThrowsOnNullSymbol()
+    public void ProcessBar_InitializesPoi()
     {
-        Assert.Throws<ArgumentNullException>(() => new InstrumentDataStore(null!));
+        var store = new InstrumentDataStore("ES");
+        store.SetSessionStart(SessionStart);
+        store.ProcessBar(SessionStart, 5, 100, 105, 95, 102);
+
+        var daily = store.GetPeriodPoi(PeriodType.Daily, true);
+        Assert.NotNull(daily);
+        Assert.True(daily!.IsInitialized);
+        Assert.Equal(100m, daily.Open);
+        Assert.Equal(105m, daily.High);
+        Assert.Equal(95m, daily.Low);
+        Assert.Equal(102m, daily.Close);
     }
 
     [Fact]
-    public void ContributePeriodData_CreatesNewPoi()
+    public void ProcessBar_UpdatesHighLow()
     {
-        // Arrange
         var store = new InstrumentDataStore("ES");
-        var range = new TimeRange
-        {
-            Start = DayStart,
-            End = DayEnd,
-            Open = 100, High = 120, Low = 90, Close = 110
-        };
+        store.SetSessionStart(SessionStart);
+        store.ProcessBar(SessionStart, 5, 100, 105, 95, 102);
+        store.ProcessBar(SessionStart.AddMinutes(5), 5, 102, 110, 97, 108);
 
-        // Act
-        store.ContributePeriodData(PeriodType.Daily, isCurrent: true, DayStart, DayEnd, range);
-
-        // Assert
-        var poi = store.GetPeriodPoi(PeriodType.Daily, isCurrent: true);
-        Assert.NotNull(poi);
-        Assert.Equal(100, poi.Open);
-        Assert.True(poi.HasCompleteCoverage());
+        var daily = store.GetPeriodPoi(PeriodType.Daily, true);
+        Assert.Equal(110m, daily!.High);
+        Assert.Equal(95m, daily.Low); // Original low is still lower
     }
 
     [Fact]
-    public void ContributePeriodData_MergesWithExisting()
+    public void SetSessionStart_TransitionsDailyPeriod()
     {
-        // Arrange
         var store = new InstrumentDataStore("ES");
-        var range1 = new TimeRange
-        {
-            Start = DayStart,
-            End = DayStart.AddHours(12),
-            Open = 100, High = 110, Low = 95, Close = 105
-        };
-        var range2 = new TimeRange
-        {
-            Start = DayStart.AddHours(12),
-            End = DayEnd,
-            Open = 105, High = 125, Low = 100, Close = 120
-        };
+        var day1 = SessionStart;
+        var day2 = SessionStart.AddDays(1);
 
-        // Act
-        store.ContributePeriodData(PeriodType.Daily, true, DayStart, DayEnd, range1);
-        store.ContributePeriodData(PeriodType.Daily, true, DayStart, DayEnd, range2);
+        store.SetSessionStart(day1);
+        store.ProcessBar(day1, 5, 100, 105, 95, 102);
 
-        // Assert
-        var poi = store.GetPeriodPoi(PeriodType.Daily, true);
-        Assert.NotNull(poi);
-        Assert.True(poi.HasCompleteCoverage());
-        Assert.Equal(125, poi.High);
-        Assert.Equal(95, poi.Low);
+        store.SetSessionStart(day2);
+        store.ProcessBar(day2, 5, 103, 108, 99, 106);
+
+        var prevDaily = store.GetPeriodPoi(PeriodType.Daily, false);
+        var currDaily = store.GetPeriodPoi(PeriodType.Daily, true);
+
+        Assert.NotNull(prevDaily);
+        Assert.NotNull(currDaily);
+        Assert.Equal(105m, prevDaily!.High);
+        Assert.Equal(108m, currDaily!.High);
     }
 
     [Fact]
-    public void GetPeriodPoi_ReturnsNullForUnknown()
+    public void SetSessionStart_TransitionsWeeklyOnIsoWeekChange()
     {
         var store = new InstrumentDataStore("ES");
-        
-        var poi = store.GetPeriodPoi(PeriodType.Daily, true);
-        
-        Assert.Null(poi);
+
+        // Monday Jan 6 session (trading day Mon)
+        var monday = new DateTime(2025, 1, 5, 23, 0, 0); // Sun 23:00 → trading day Mon Jan 6
+        store.SetSessionStart(monday);
+        store.ProcessBar(monday, 5, 100, 105, 95, 102);
+
+        // Skip ahead to next Monday (Jan 13)
+        var nextMonday = new DateTime(2025, 1, 12, 23, 0, 0); // Sun 23:00 → trading day Mon Jan 13
+        // Need intermediate sessions to trigger week change
+        for (int i = 1; i <= 5; i++)
+        {
+            var sessionStart = monday.AddDays(i);
+            store.SetSessionStart(sessionStart);
+            store.ProcessBar(sessionStart, 5, 100 + i, 105 + i, 95 - i, 102);
+        }
+        store.SetSessionStart(nextMonday);
+        store.ProcessBar(nextMonday, 5, 200, 210, 190, 205);
+
+        var prevWeek = store.GetPeriodPoi(PeriodType.Weekly, false);
+        var currWeek = store.GetPeriodPoi(PeriodType.Weekly, true);
+
+        Assert.NotNull(prevWeek);
+        Assert.NotNull(currWeek);
+        Assert.True(prevWeek!.IsInitialized);
+        Assert.True(currWeek!.IsInitialized);
     }
 
     [Fact]
-    public void HasCompleteCoverage_DelegatesToPoi()
+    public void FourHour_TransitionsCorrectly()
     {
-        // Arrange
         var store = new InstrumentDataStore("ES");
-        var partialRange = new TimeRange
-        {
-            Start = DayStart.AddHours(6),
-            End = DayEnd,
-            Open = 100, High = 110, Low = 95, Close = 105
-        };
-        var fullRange = new TimeRange
-        {
-            Start = DayStart,
-            End = DayEnd,
-            Open = 100, High = 120, Low = 90, Close = 110
-        };
+        store.SetSessionStart(SessionStart);
 
-        // Act
-        store.ContributePeriodData(PeriodType.Daily, true, DayStart, DayEnd, partialRange);
-        store.ContributePeriodData(PeriodType.Weekly, true, DayStart, DayEnd, fullRange);
+        // Bars within first 4H block
+        store.ProcessBar(SessionStart, 5, 100, 105, 95, 102);
+        store.ProcessBar(SessionStart.AddHours(1), 5, 102, 107, 97, 104);
 
-        // Assert
-        Assert.False(store.HasCompleteCoverage(PeriodType.Daily, true));
-        Assert.True(store.HasCompleteCoverage(PeriodType.Weekly, true));
-        Assert.False(store.HasCompleteCoverage(PeriodType.Monthly, true)); // Not contributed
+        // Bar in second 4H block
+        store.ProcessBar(SessionStart.AddHours(4), 5, 104, 110, 99, 108);
+
+        var prev4h = store.GetPeriodPoi(PeriodType.FourHour, false);
+        var curr4h = store.GetPeriodPoi(PeriodType.FourHour, true);
+
+        Assert.NotNull(prev4h);
+        Assert.NotNull(curr4h);
+        Assert.Equal(107m, prev4h!.High);
+        Assert.Equal(110m, curr4h!.High);
     }
 
     [Fact]
-    public void ContributePeriodData_HandlesCurrentAndPreviousSeparately()
+    public void GetAllPeriods_ReturnsOnlyInitialized()
     {
-        // Arrange
         var store = new InstrumentDataStore("ES");
-        var currentRange = new TimeRange
-        {
-            Start = DayStart,
-            End = DayEnd,
-            Open = 100, High = 120, Low = 90, Close = 110
-        };
-        var previousRange = new TimeRange
-        {
-            Start = DayStart.AddDays(-1),
-            End = DayStart,
-            Open = 95, High = 115, Low = 85, Close = 100
-        };
+        store.SetSessionStart(SessionStart);
+        store.ProcessBar(SessionStart, 5, 100, 105, 95, 102);
 
-        // Act
-        store.ContributePeriodData(PeriodType.Daily, true, DayStart, DayEnd, currentRange);
-        store.ContributePeriodData(PeriodType.Daily, false, DayStart.AddDays(-1), DayStart, previousRange);
-
-        // Assert
-        var currentPoi = store.GetPeriodPoi(PeriodType.Daily, true);
-        var previousPoi = store.GetPeriodPoi(PeriodType.Daily, false);
-        
-        Assert.NotNull(currentPoi);
-        Assert.NotNull(previousPoi);
-        Assert.Equal(120, currentPoi.High);
-        Assert.Equal(115, previousPoi.High);
-    }
-
-    [Fact]
-    public void ContributePeriodData_ResetsPoi_WhenPeriodBoundariesChange()
-    {
-        // Arrange
-        var store = new InstrumentDataStore("ES");
-        var range1 = new TimeRange
-        {
-            Start = DayStart,
-            End = DayEnd,
-            Open = 100, High = 120, Low = 90, Close = 110
-        };
-        var range2 = new TimeRange
-        {
-            Start = DayEnd,
-            End = DayEnd.AddDays(1),
-            Open = 110, High = 130, Low = 105, Close = 125
-        };
-
-        // Act - first contribution
-        store.ContributePeriodData(PeriodType.Daily, true, DayStart, DayEnd, range1);
-        
-        // Act - new period (next day)
-        store.ContributePeriodData(PeriodType.Daily, true, DayEnd, DayEnd.AddDays(1), range2);
-
-        // Assert - POI should be for the new period
-        var poi = store.GetPeriodPoi(PeriodType.Daily, true);
-        Assert.NotNull(poi);
-        Assert.Equal(DayEnd, poi.PeriodStart);
-        Assert.Equal(110, poi.Open);
-    }
-
-    [Fact]
-    public void GetAllPeriods_ReturnsContributedPeriods()
-    {
-        // Arrange
-        var store = new InstrumentDataStore("ES");
-        var range = new TimeRange
-        {
-            Start = DayStart,
-            End = DayEnd,
-            Open = 100, High = 120, Low = 90, Close = 110
-        };
-
-        // Act
-        store.ContributePeriodData(PeriodType.Daily, true, DayStart, DayEnd, range);
-        store.ContributePeriodData(PeriodType.Weekly, true, DayStart, DayEnd, range);
-        store.ContributePeriodData(PeriodType.Daily, false, DayStart.AddDays(-1), DayStart, range);
-
-        // Assert
         var periods = store.GetAllPeriods();
-        Assert.Equal(3, periods.Count);
-        Assert.Contains(periods, p => p.Type == PeriodType.Daily && p.IsCurrent);
-        Assert.Contains(periods, p => p.Type == PeriodType.Daily && !p.IsCurrent);
-        Assert.Contains(periods, p => p.Type == PeriodType.Weekly && p.IsCurrent);
+
+        Assert.True(periods.Count > 0);
+        Assert.All(periods, p => Assert.True(p.Poi.IsInitialized));
     }
 
     [Fact]
-    public void Clear_RemovesAllData()
+    public void Clear_ResetsAllData()
     {
-        // Arrange
         var store = new InstrumentDataStore("ES");
-        var range = new TimeRange
-        {
-            Start = DayStart,
-            End = DayEnd,
-            Open = 100, High = 120, Low = 90, Close = 110
-        };
-        store.ContributePeriodData(PeriodType.Daily, true, DayStart, DayEnd, range);
+        store.SetSessionStart(SessionStart);
+        store.ProcessBar(SessionStart, 5, 100, 105, 95, 102);
 
-        // Act
         store.Clear();
 
-        // Assert
-        Assert.Null(store.GetPeriodPoi(PeriodType.Daily, true));
-        Assert.Empty(store.GetAllPeriods());
+        var daily = store.GetPeriodPoi(PeriodType.Daily, true);
+        Assert.Null(daily);
+        Assert.Equal(DateTime.MinValue, store.CurrentSessionStart);
     }
 
     [Fact]
-    public void ConcurrentContributions_AreThreadSafe()
+    public void DuplicateSessionStart_IsIgnored()
     {
-        // Arrange
         var store = new InstrumentDataStore("ES");
-        var tasks = new List<Task>();
+        store.SetSessionStart(SessionStart);
+        store.ProcessBar(SessionStart, 5, 100, 105, 95, 102);
 
-        // Act - simulate 10 concurrent indicator instances contributing
-        for (int i = 0; i < 10; i++)
-        {
-            int offset = i;
-            tasks.Add(Task.Run(() =>
-            {
-                for (int j = 0; j < 100; j++)
-                {
-                    var range = new TimeRange
-                    {
-                        Start = DayStart.AddHours(offset),
-                        End = DayStart.AddHours(offset + 1),
-                        Open = 100 + offset,
-                        High = 110 + offset,
-                        Low = 90 + offset,
-                        Close = 105 + offset,
-                        SourceId = $"Thread{offset}"
-                    };
-                    store.ContributePeriodData(PeriodType.Daily, true, DayStart, DayEnd, range);
-                }
-            }));
-        }
-        Task.WaitAll(tasks.ToArray());
+        // Same session start again
+        store.SetSessionStart(SessionStart);
 
-        // Assert - should not throw, and should have valid data
-        var poi = store.GetPeriodPoi(PeriodType.Daily, true);
-        Assert.NotNull(poi);
-        Assert.True(poi.CoveredRanges.Count >= 1);
+        // Should still have the same daily — no transition
+        var prevDaily = store.GetPeriodPoi(PeriodType.Daily, false);
+        Assert.Null(prevDaily); // No previous = no spurious transition
+    }
+
+    [Fact]
+    public void ProcessBar_GranularityPreserved()
+    {
+        var store = new InstrumentDataStore("ES");
+        store.SetSessionStart(SessionStart);
+
+        // 60-min candle with high of 105
+        store.ProcessBar(SessionStart, 60, 100, 105, 95, 102);
+
+        // 5-min candle with same high price — should update timestamp for better granularity
+        store.ProcessBar(SessionStart.AddMinutes(30), 5, 103, 105, 97, 104);
+
+        var daily = store.GetPeriodPoi(PeriodType.Daily, true);
+        Assert.Equal(105m, daily!.High);
+        Assert.Equal(SessionStart.AddMinutes(30), daily.HighTime);
+        Assert.Equal(5, daily.HighTimeGranularity);
     }
 }

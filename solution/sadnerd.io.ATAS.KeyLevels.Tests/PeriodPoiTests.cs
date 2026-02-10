@@ -5,249 +5,147 @@ using Xunit;
 namespace sadnerd.io.ATAS.KeyLevels.Tests;
 
 /// <summary>
-/// Unit tests for the PeriodPoi class.
+/// Unit tests for the simplified PeriodPoi class (bar-based updates).
 /// </summary>
 public class PeriodPoiTests
 {
-    private static readonly DateTime DayStart = new(2026, 2, 8, 0, 0, 0);
-    private static readonly DateTime DayEnd = new(2026, 2, 9, 0, 0, 0);
-
-    private PeriodPoi CreateDailyPoi(bool isCurrent = true) => new()
-    {
-        Type = PeriodType.Daily,
-        IsCurrent = isCurrent,
-        PeriodStart = DayStart,
-        PeriodEnd = DayEnd
-    };
+    private static readonly DateTime DayStart = new(2025, 1, 6, 0, 0, 0);
 
     [Fact]
-    public void AddContribution_SingleRange_SetsOhlc()
+    public void Initialize_SetsAllFields()
     {
-        // Arrange
-        var poi = CreateDailyPoi();
-        var range = new TimeRange
-        {
-            Start = DayStart,
-            End = DayEnd,
-            Open = 100, High = 120, Low = 90, Close = 110
-        };
+        var poi = new PeriodPoi { Type = PeriodType.Daily, PeriodStart = DayStart, PeriodEnd = DayStart.AddDays(1) };
 
-        // Act
-        poi.AddContribution(range);
+        poi.Initialize(DayStart, 5, open: 100, high: 105, low: 95, close: 102);
 
-        // Assert
-        Assert.Equal(100, poi.Open);
-        Assert.Equal(120, poi.High);
-        Assert.Equal(90, poi.Low);
-        Assert.Equal(110, poi.Close);
-        Assert.Equal(105, poi.Mid);
-        Assert.Single(poi.CoveredRanges);
+        Assert.True(poi.IsInitialized);
+        Assert.Equal(100m, poi.Open);
+        Assert.Equal(105m, poi.High);
+        Assert.Equal(95m, poi.Low);
+        Assert.Equal(102m, poi.Close);
+        Assert.Equal(DayStart, poi.OpenTime);
+        Assert.Equal(DayStart, poi.HighTime);
+        Assert.Equal(DayStart, poi.LowTime);
+        Assert.Equal(DayStart, poi.CloseTime);
+        Assert.Equal(5, poi.OpenTimeGranularity);
+        Assert.Equal(5, poi.HighTimeGranularity);
+        Assert.Equal(5, poi.LowTimeGranularity);
+        Assert.Equal(5, poi.CloseTimeGranularity);
+        Assert.Equal(DayStart, poi.LatestBarTime);
     }
 
     [Fact]
-    public void AddContribution_FullPeriod_HasCompleteCoverage()
+    public void UpdateBar_HigherHigh_UpdatesHighAndTimestamp()
     {
-        // Arrange
-        var poi = CreateDailyPoi();
-        var range = new TimeRange
-        {
-            Start = DayStart,
-            End = DayEnd,
-            Open = 100, High = 120, Low = 90, Close = 110
-        };
+        var poi = CreateInitializedPoi(high: 105, low: 95);
 
-        // Act
-        poi.AddContribution(range);
+        poi.UpdateBar(DayStart.AddHours(1), 5, high: 110, low: 97, close: 108);
 
-        // Assert
-        Assert.True(poi.HasCompleteCoverage());
+        Assert.Equal(110m, poi.High);
+        Assert.Equal(DayStart.AddHours(1), poi.HighTime);
     }
 
     [Fact]
-    public void AddContribution_PartialPeriod_HasIncompleteCoverage()
+    public void UpdateBar_LowerLow_UpdatesLowAndTimestamp()
     {
-        // Arrange
-        var poi = CreateDailyPoi();
-        var range = new TimeRange
-        {
-            Start = DayStart.AddHours(6), // Starts at 6am, not midnight
-            End = DayEnd,
-            Open = 100, High = 120, Low = 90, Close = 110
-        };
+        var poi = CreateInitializedPoi(high: 105, low: 95);
 
-        // Act
-        poi.AddContribution(range);
+        poi.UpdateBar(DayStart.AddHours(1), 5, high: 103, low: 90, close: 92);
 
-        // Assert
-        Assert.False(poi.HasCompleteCoverage());
+        Assert.Equal(90m, poi.Low);
+        Assert.Equal(DayStart.AddHours(1), poi.LowTime);
     }
 
     [Fact]
-    public void AddContribution_TwoContiguousRanges_MergesAndHasCompleteCoverage()
+    public void UpdateBar_NoNewExtreme_DoesNotChangeHighLow()
     {
-        // Arrange
-        var poi = CreateDailyPoi();
-        var range1 = new TimeRange
-        {
-            Start = DayStart,
-            End = DayStart.AddHours(12),
-            Open = 100, High = 110, Low = 95, Close = 105
-        };
-        var range2 = new TimeRange
-        {
-            Start = DayStart.AddHours(12),
-            End = DayEnd,
-            Open = 105, High = 125, Low = 100, Close = 120
-        };
+        var poi = CreateInitializedPoi(high: 105, low: 95);
 
-        // Act
-        poi.AddContribution(range1);
-        poi.AddContribution(range2);
+        poi.UpdateBar(DayStart.AddHours(1), 5, high: 103, low: 97, close: 100);
 
-        // Assert
-        Assert.True(poi.HasCompleteCoverage());
-        Assert.Single(poi.CoveredRanges); // Merged into one
-        Assert.Equal(100, poi.Open);
-        Assert.Equal(125, poi.High);
-        Assert.Equal(95, poi.Low);
-        Assert.Equal(120, poi.Close);
+        Assert.Equal(105m, poi.High);
+        Assert.Equal(95m, poi.Low);
+        Assert.Equal(DayStart, poi.HighTime); // unchanged
+        Assert.Equal(DayStart, poi.LowTime);  // unchanged
     }
 
     [Fact]
-    public void AddContribution_GapBetweenRanges_GetGapsReturnsGap()
+    public void UpdateBar_AlwaysUpdatesClose()
     {
-        // Arrange
-        var poi = CreateDailyPoi();
-        var range1 = new TimeRange
-        {
-            Start = DayStart,
-            End = DayStart.AddHours(6),
-            Open = 100, High = 110, Low = 95, Close = 105
-        };
-        var range2 = new TimeRange
-        {
-            Start = DayStart.AddHours(12), // Gap from 6am to 12pm
-            End = DayEnd,
-            Open = 105, High = 120, Low = 100, Close = 115
-        };
+        var poi = CreateInitializedPoi(high: 105, low: 95);
 
-        // Act
-        poi.AddContribution(range1);
-        poi.AddContribution(range2);
+        poi.UpdateBar(DayStart.AddHours(1), 5, high: 103, low: 97, close: 101);
 
-        // Assert
-        Assert.False(poi.HasCompleteCoverage());
-        var gaps = poi.GetGaps().ToList();
-        Assert.Single(gaps);
-        Assert.Equal(DayStart.AddHours(6), gaps[0].Start);
-        Assert.Equal(DayStart.AddHours(12), gaps[0].End);
+        Assert.Equal(101m, poi.Close);
+        Assert.Equal(DayStart.AddHours(1), poi.CloseTime);
     }
 
     [Fact]
-    public void HasCoverageAt_ReturnsTrueForCoveredTime()
+    public void UpdateBar_SamePriceMoreGranular_UpdatesTimestamp()
     {
-        // Arrange
-        var poi = CreateDailyPoi();
-        var range = new TimeRange
-        {
-            Start = DayStart,
-            End = DayStart.AddHours(12),
-            Open = 100, High = 110, Low = 95, Close = 105
-        };
-        poi.AddContribution(range);
+        var poi = CreateInitializedPoi(high: 105, low: 95, candleDuration: 60);
 
-        // Act & Assert
-        Assert.True(poi.HasCoverageAt(DayStart.AddHours(6)));
-        Assert.False(poi.HasCoverageAt(DayStart.AddHours(18)));
+        // Same high price but smaller candle → more granular timestamp
+        poi.UpdateBar(DayStart.AddHours(2), 5, high: 105, low: 97, close: 103);
+
+        Assert.Equal(105m, poi.High);
+        Assert.Equal(DayStart.AddHours(2), poi.HighTime);
+        Assert.Equal(5, poi.HighTimeGranularity);
     }
 
     [Fact]
-    public void AddContribution_ClipsRangeToperiodBoundaries()
+    public void UpdateBar_SamePriceLessGranular_DoesNotUpdateTimestamp()
     {
-        // Arrange
-        var poi = CreateDailyPoi();
-        var range = new TimeRange
-        {
-            Start = DayStart.AddHours(-2), // Before period start
-            End = DayEnd.AddHours(2),       // After period end
-            Open = 100, High = 120, Low = 90, Close = 110
-        };
+        var poi = CreateInitializedPoi(high: 105, low: 95, candleDuration: 5);
 
-        // Act
-        poi.AddContribution(range);
+        // Same high price but larger candle → less granular, keep existing
+        poi.UpdateBar(DayStart.AddHours(2), 60, high: 105, low: 97, close: 103);
 
-        // Assert
-        Assert.Single(poi.CoveredRanges);
-        Assert.Equal(DayStart, poi.CoveredRanges[0].Start);
-        Assert.Equal(DayEnd, poi.CoveredRanges[0].End);
+        Assert.Equal(105m, poi.High);
+        Assert.Equal(DayStart, poi.HighTime); // unchanged
+        Assert.Equal(5, poi.HighTimeGranularity); // unchanged
     }
 
     [Fact]
-    public void AddContribution_MultipleOverlapping_MergesCorrectly()
+    public void UpdateBar_TracksLatestBarTime()
     {
-        // Arrange
-        var poi = CreateDailyPoi();
-        var ranges = new[]
-        {
-            new TimeRange { Start = DayStart, End = DayStart.AddHours(8), Open = 100, High = 105, Low = 98, Close = 102 },
-            new TimeRange { Start = DayStart.AddHours(4), End = DayStart.AddHours(12), Open = 102, High = 110, Low = 100, Close = 108 },
-            new TimeRange { Start = DayStart.AddHours(8), End = DayStart.AddHours(16), Open = 108, High = 115, Low = 105, Close = 112 },
-            new TimeRange { Start = DayStart.AddHours(12), End = DayEnd, Open = 112, High = 120, Low = 108, Close = 118 }
-        };
+        var poi = CreateInitializedPoi(high: 105, low: 95);
 
-        // Act
-        foreach (var range in ranges)
-        {
-            poi.AddContribution(range);
-        }
+        poi.UpdateBar(DayStart.AddHours(1), 5, high: 103, low: 97, close: 100);
+        poi.UpdateBar(DayStart.AddHours(3), 5, high: 104, low: 96, close: 101);
 
-        // Assert
-        Assert.True(poi.HasCompleteCoverage());
-        Assert.Single(poi.CoveredRanges);
-        Assert.Equal(100, poi.Open);
-        Assert.Equal(120, poi.High);
-        Assert.Equal(98, poi.Low);
-        Assert.Equal(118, poi.Close);
+        Assert.Equal(DayStart.AddHours(3), poi.LatestBarTime);
     }
 
     [Fact]
-    public void TotalGapDuration_CalculatesCorrectly()
+    public void Mid_CalculatesCorrectly()
     {
-        // Arrange
-        var poi = CreateDailyPoi();
-        var range1 = new TimeRange
-        {
-            Start = DayStart,
-            End = DayStart.AddHours(6),
-            Open = 100, High = 110, Low = 95, Close = 105
-        };
-        var range2 = new TimeRange
-        {
-            Start = DayStart.AddHours(12),
-            End = DayStart.AddHours(18),
-            Open = 105, High = 120, Low = 100, Close = 115
-        };
+        var poi = CreateInitializedPoi(high: 110, low: 90);
 
-        // Act
-        poi.AddContribution(range1);
-        poi.AddContribution(range2);
-
-        // Assert: Gaps are 6am-12pm (6h) and 6pm-midnight (6h) = 12h total
-        Assert.Equal(TimeSpan.FromHours(12), poi.TotalGapDuration);
+        Assert.Equal(100m, poi.Mid);
     }
 
     [Fact]
-    public void GetGaps_EmptyPoi_ReturnsEntirePeriod()
+    public void OpenNeverChanges_AfterInitialize()
     {
-        // Arrange
-        var poi = CreateDailyPoi();
+        var poi = CreateInitializedPoi(high: 105, low: 95);
 
-        // Act
-        var gaps = poi.GetGaps().ToList();
+        poi.UpdateBar(DayStart.AddHours(1), 5, high: 103, low: 97, close: 101);
+        poi.UpdateBar(DayStart.AddHours(2), 5, high: 108, low: 92, close: 106);
 
-        // Assert
-        Assert.Single(gaps);
-        Assert.Equal(DayStart, gaps[0].Start);
-        Assert.Equal(DayEnd, gaps[0].End);
+        Assert.Equal(100m, poi.Open);
+        Assert.Equal(DayStart, poi.OpenTime);
+    }
+
+    private PeriodPoi CreateInitializedPoi(decimal high = 105, decimal low = 95, int candleDuration = 5)
+    {
+        var poi = new PeriodPoi
+        {
+            Type = PeriodType.Daily,
+            PeriodStart = DayStart,
+            PeriodEnd = DayStart.AddDays(1)
+        };
+        poi.Initialize(DayStart, candleDuration, open: 100, high: high, low: low, close: 102);
+        return poi;
     }
 }
