@@ -34,9 +34,17 @@ namespace sadnerd.io.ATAS.PvsraCandles
         private PenSettings _shadowBorderPen = new() { Color = CrossColors.Transparent };
 
         /// <summary>
-        /// Working state, owned exclusively by the calculation thread. Never touched while rendering.
+        /// Every shadow ever created, keyed by its start bar. Working state, owned exclusively by the
+        /// calculation thread and never touched while rendering.
         /// </summary>
         private readonly Dictionary<int, Shadow> _shadows = new();
+
+        /// <summary>
+        /// The subset of <see cref="_shadows"/> that is still unrecovered - the only shadows that can be
+        /// affected by a new bar, and the only ones that render. Kept as a separate index so per-bar work
+        /// scales with the number of open shadows rather than with the whole chart history.
+        /// </summary>
+        private readonly List<Shadow> _openShadows = new();
 
         /// <summary>
         /// Immutable snapshot handed to the render thread. Replaced wholesale, never mutated in place:
@@ -152,6 +160,7 @@ namespace sadnerd.io.ATAS.PvsraCandles
         {
             Clear();
             _shadows.Clear();
+            _openShadows.Clear();
             _shadowsDirty = false;
             Volatile.Write(ref _renderShadows, Array.Empty<ShadowBox>());
         }
@@ -192,16 +201,15 @@ namespace sadnerd.io.ATAS.PvsraCandles
         /// </summary>
         private void PublishShadows()
         {
-            var boxes = new List<ShadowBox>(_shadows.Count);
+            var boxes = new ShadowBox[_openShadows.Count];
 
-            foreach (var shadow in _shadows.Values)
+            for (var i = 0; i < _openShadows.Count; i++)
             {
-                if (shadow.EndBar != null) continue;
-
-                boxes.Add(new ShadowBox(shadow.StartBar, shadow.UnrecoveredPriceLow, shadow.UnrecoveredPriceHigh));
+                var shadow = _openShadows[i];
+                boxes[i] = new ShadowBox(shadow.StartBar, shadow.UnrecoveredPriceLow, shadow.UnrecoveredPriceHigh);
             }
 
-            Volatile.Write(ref _renderShadows, boxes.ToArray());
+            Volatile.Write(ref _renderShadows, boxes);
             _shadowsDirty = false;
         }
 
@@ -262,49 +270,74 @@ namespace sadnerd.io.ATAS.PvsraCandles
             var priceLow = Math.Min(currentCandle.Open, currentCandle.Close);
 
             // The live bar is recalculated on every tick; only republish when the shadow actually moved.
-            if (_shadows.TryGetValue(bar, out var existing)
-                && existing.EndBar == null
-                && existing.UnrecoveredPriceLow == priceLow
-                && existing.UnrecoveredPriceHigh == priceHigh)
+            if (_shadows.TryGetValue(bar, out var existing))
             {
-                return;
+                if (existing.EndBar == null
+                    && existing.UnrecoveredPriceLow == priceLow
+                    && existing.UnrecoveredPriceHigh == priceHigh)
+                {
+                    return;
+                }
+
+                RemoveOpenShadow(bar);
             }
 
-            _shadows[bar] = new Shadow(bar, priceLow, priceHigh, null, priceLow, priceHigh);
+            var shadow = new Shadow(bar, priceLow, priceHigh, null, priceLow, priceHigh);
+
+            _shadows[bar] = shadow;
+            _openShadows.Add(shadow);
             _shadowsDirty = true;
+        }
+
+        /// <summary>
+        /// Drops the open shadow starting at <paramref name="bar"/>, matched by start bar rather than by
+        /// value: <see cref="Shadow"/> is a record, so two distinct shadows can compare equal.
+        /// </summary>
+        private void RemoveOpenShadow(int bar)
+        {
+            for (var i = _openShadows.Count - 1; i >= 0; i--)
+            {
+                if (_openShadows[i].StartBar != bar) continue;
+
+                _openShadows.RemoveAt(i);
+                return;
+            }
         }
 
         private void MarkRecoveredShadows(int bar, CandleDetails currentCandle)
         {
-            var shadows = _shadows.Where(s => s.Key < bar && s.Value.EndBar == null).ToList();
-
             var priceHigh = currentCandle.High;
             var priceLow = currentCandle.Low;
 
-            foreach (var shadow in shadows)
+            // Walking backwards so a shadow can be dropped from the index the moment it is fully recovered.
+            for (var i = _openShadows.Count - 1; i >= 0; i--)
             {
-                if(priceLow > shadow.Value.UnrecoveredPriceHigh || priceHigh < shadow.Value.UnrecoveredPriceLow) continue;
+                var shadow = _openShadows[i];
 
-                var previousLow = shadow.Value.UnrecoveredPriceLow;
-                var previousHigh = shadow.Value.UnrecoveredPriceHigh;
+                if (shadow.StartBar >= bar) continue;
+                if (priceLow > shadow.UnrecoveredPriceHigh || priceHigh < shadow.UnrecoveredPriceLow) continue;
 
-                if (priceLow <= shadow.Value.UnrecoveredPriceLow && priceHigh >= shadow.Value.UnrecoveredPriceHigh)
+                var previousLow = shadow.UnrecoveredPriceLow;
+                var previousHigh = shadow.UnrecoveredPriceHigh;
+
+                if (priceLow <= shadow.UnrecoveredPriceLow && priceHigh >= shadow.UnrecoveredPriceHigh)
                 {
-                    shadow.Value.UnrecoveredPriceHigh = shadow.Value.UnrecoveredPriceLow;
-                } else if (priceLow >= shadow.Value.UnrecoveredPriceLow)
+                    shadow.UnrecoveredPriceHigh = shadow.UnrecoveredPriceLow;
+                } else if (priceLow >= shadow.UnrecoveredPriceLow)
                 {
-                    shadow.Value.UnrecoveredPriceHigh = Math.Min(shadow.Value.UnrecoveredPriceHigh, priceLow);
-                } else if (priceHigh <= shadow.Value.UnrecoveredPriceHigh)
+                    shadow.UnrecoveredPriceHigh = Math.Min(shadow.UnrecoveredPriceHigh, priceLow);
+                } else if (priceHigh <= shadow.UnrecoveredPriceHigh)
                 {
-                    shadow.Value.UnrecoveredPriceLow = Math.Max(shadow.Value.UnrecoveredPriceLow, priceHigh);
+                    shadow.UnrecoveredPriceLow = Math.Max(shadow.UnrecoveredPriceLow, priceHigh);
                 }
 
-                if (shadow.Value.UnrecoveredPriceHigh <= shadow.Value.UnrecoveredPriceLow)
+                if (shadow.UnrecoveredPriceHigh <= shadow.UnrecoveredPriceLow)
                 {
-                    shadow.Value.EndBar = Math.Min(shadow.Value.EndBar ?? int.MaxValue, bar);
+                    shadow.EndBar = Math.Min(shadow.EndBar ?? int.MaxValue, bar);
+                    _openShadows.RemoveAt(i);
                     _shadowsDirty = true;
                 }
-                else if (shadow.Value.UnrecoveredPriceLow != previousLow || shadow.Value.UnrecoveredPriceHigh != previousHigh)
+                else if (shadow.UnrecoveredPriceLow != previousLow || shadow.UnrecoveredPriceHigh != previousHigh)
                 {
                     _shadowsDirty = true;
                 }
