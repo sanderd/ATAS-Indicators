@@ -31,8 +31,23 @@ namespace sadnerd.io.ATAS.PvsraCandles
         
         private readonly IIndicatorCandleToCandleDetailsMapper _candleMapper;
         private readonly ICandleTypeDeterminator _candleTypeDeterminator;
-        private IDictionary<int, Shadow> _shadows = new Dictionary<int, Shadow>();
         private PenSettings _shadowBorderPen = new() { Color = CrossColors.Transparent };
+
+        /// <summary>
+        /// Working state, owned exclusively by the calculation thread. Never touched while rendering.
+        /// </summary>
+        private readonly Dictionary<int, Shadow> _shadows = new();
+
+        /// <summary>
+        /// Immutable snapshot handed to the render thread. Replaced wholesale, never mutated in place:
+        /// the renderer only ever sees a fully built array, so there is nothing to enumerate mid-change
+        /// and no torn <see cref="decimal"/> reads.
+        /// </summary>
+        private ShadowBox[] _renderShadows = Array.Empty<ShadowBox>();
+
+        private bool _shadowsDirty;
+
+        private readonly record struct ShadowBox(int Bar, decimal Low, decimal High);
 
         [Display(Name = "PVSRA Green Candle", GroupName = "Candles")]
         public CrossColor PvsraGreenColor
@@ -137,6 +152,8 @@ namespace sadnerd.io.ATAS.PvsraCandles
         {
             Clear();
             _shadows.Clear();
+            _shadowsDirty = false;
+            Volatile.Write(ref _renderShadows, Array.Empty<ShadowBox>());
         }
 
         protected override void OnRender(RenderContext context, DrawingLayouts layout)
@@ -145,24 +162,47 @@ namespace sadnerd.io.ATAS.PvsraCandles
 
             if (ShowShadows)
             {
-                DrawCandleShadows(context, ChartInfo, ChartInfo.TimeFrame);
+                DrawCandleShadows(context, ChartInfo);
             }
         }
 
-        private void DrawCandleShadows(RenderContext context, IChart chartInfo, string timeFrame)
+        private void DrawCandleShadows(RenderContext context, IChart chartInfo)
         {
-            var shadows = _shadows.Where(s => s.Key <= LastVisibleBarNumber && s.Value.EndBar == null).ToList();
+            var shadows = Volatile.Read(ref _renderShadows);
+            if (shadows.Length == 0) return;
+
+            var lastVisibleBar = LastVisibleBarNumber;
+            var regionWidth = chartInfo.Region.Width;
 
             foreach (var shadow in shadows)
             {
-                var x = chartInfo.GetXByBar(shadow.Key);
-                var x2 = chartInfo.Region.Width;
-                var y = chartInfo.GetYByPrice(Math.Max(shadow.Value.UnrecoveredPriceHigh, shadow.Value.UnrecoveredPriceLow), false);
-                var w = x2 - x;
-                var h = chartInfo.GetYByPrice(Math.Min(shadow.Value.UnrecoveredPriceHigh, shadow.Value.UnrecoveredPriceLow), false) - y;
+                if (shadow.Bar > lastVisibleBar) continue;
+
+                var x = chartInfo.GetXByBar(shadow.Bar);
+                var y = chartInfo.GetYByPrice(Math.Max(shadow.High, shadow.Low), false);
+                var w = regionWidth - x;
+                var h = chartInfo.GetYByPrice(Math.Min(shadow.High, shadow.Low), false) - y;
                 var rec = new Rectangle(x, y, w, h);
                 context.DrawFillRectangle(_shadowBorderPen.RenderObject, ShadowColor.Convert(), rec);
             }
+        }
+
+        /// <summary>
+        /// Rebuilds the render snapshot from the working state and publishes it in one atomic reference write.
+        /// </summary>
+        private void PublishShadows()
+        {
+            var boxes = new List<ShadowBox>(_shadows.Count);
+
+            foreach (var shadow in _shadows.Values)
+            {
+                if (shadow.EndBar != null) continue;
+
+                boxes.Add(new ShadowBox(shadow.StartBar, shadow.UnrecoveredPriceLow, shadow.UnrecoveredPriceHigh));
+            }
+
+            Volatile.Write(ref _renderShadows, boxes.ToArray());
+            _shadowsDirty = false;
         }
 
         protected override void OnCalculate(int bar, decimal value)
@@ -202,24 +242,36 @@ namespace sadnerd.io.ATAS.PvsraCandles
             {
                 if (candleType != CandleType.NeutralPositive && candleType != CandleType.NeutralNegative)
                 {
-                    CreateCandleShadow(bar, currentCandle, candleType);
+                    CreateCandleShadow(bar, currentCandle);
                 }
 
                 MarkRecoveredShadows(bar, currentCandle);
+
+                // Publishing on every historical bar would allocate a snapshot per bar for no visible gain:
+                // the chart only shows the result once the pass reaches the live bars.
+                if (_shadowsDirty && bar >= CurrentBar - 1)
+                {
+                    PublishShadows();
+                }
             }
         }
 
-        private void CreateCandleShadow(int bar, CandleDetails currentCandle, CandleType candleType)
+        private void CreateCandleShadow(int bar, CandleDetails currentCandle)
         {
-            if (_shadows.ContainsKey(bar))
-            {
-                _shadows.Remove(bar);
-            }
-
             var priceHigh = Math.Max(currentCandle.Open, currentCandle.Close);
             var priceLow = Math.Min(currentCandle.Open, currentCandle.Close);
-            
-            _shadows.Add(bar, new Shadow(bar, priceLow, priceHigh, null, priceLow, priceHigh));
+
+            // The live bar is recalculated on every tick; only republish when the shadow actually moved.
+            if (_shadows.TryGetValue(bar, out var existing)
+                && existing.EndBar == null
+                && existing.UnrecoveredPriceLow == priceLow
+                && existing.UnrecoveredPriceHigh == priceHigh)
+            {
+                return;
+            }
+
+            _shadows[bar] = new Shadow(bar, priceLow, priceHigh, null, priceLow, priceHigh);
+            _shadowsDirty = true;
         }
 
         private void MarkRecoveredShadows(int bar, CandleDetails currentCandle)
@@ -233,6 +285,9 @@ namespace sadnerd.io.ATAS.PvsraCandles
             {
                 if(priceLow > shadow.Value.UnrecoveredPriceHigh || priceHigh < shadow.Value.UnrecoveredPriceLow) continue;
 
+                var previousLow = shadow.Value.UnrecoveredPriceLow;
+                var previousHigh = shadow.Value.UnrecoveredPriceHigh;
+
                 if (priceLow <= shadow.Value.UnrecoveredPriceLow && priceHigh >= shadow.Value.UnrecoveredPriceHigh)
                 {
                     shadow.Value.UnrecoveredPriceHigh = shadow.Value.UnrecoveredPriceLow;
@@ -243,10 +298,15 @@ namespace sadnerd.io.ATAS.PvsraCandles
                 {
                     shadow.Value.UnrecoveredPriceLow = Math.Max(shadow.Value.UnrecoveredPriceLow, priceHigh);
                 }
-                
+
                 if (shadow.Value.UnrecoveredPriceHigh <= shadow.Value.UnrecoveredPriceLow)
                 {
                     shadow.Value.EndBar = Math.Min(shadow.Value.EndBar ?? int.MaxValue, bar);
+                    _shadowsDirty = true;
+                }
+                else if (shadow.Value.UnrecoveredPriceLow != previousLow || shadow.Value.UnrecoveredPriceHigh != previousHigh)
+                {
+                    _shadowsDirty = true;
                 }
             }
         }
